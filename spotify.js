@@ -39,7 +39,17 @@ export async function loginWithSpotify() {
         redirect_uri: REDIRECT_URI,
         code_challenge_method: 'S256',
         code_challenge: challenge,
-        scope: 'user-read-private user-read-email streaming user-read-playback-state user-modify-playback-state user-library-read'
+        scope: [
+            'user-read-private',
+            'user-read-email',
+            'streaming',
+            'user-read-playback-state',
+            'user-modify-playback-state',
+            'user-library-read',
+            'playlist-read-private',
+            'playlist-read-collaborative',
+            'user-top-read'
+        ].join(' ')
     });
 
     window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
