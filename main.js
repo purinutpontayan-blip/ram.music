@@ -140,8 +140,8 @@ function setupLyricsComponent(track) {
     lyricsEl.setAttribute('query', `${title} ${artist}`);
     
     lyricsEl.setAttribute('autoscroll', 'true');
-    lyricsEl.setAttribute('interpolate', 'true');
-    lyricsEl.setAttribute('font-family', "'Outfit', sans-serif");
+    lyricsEl.setAttribute('interpolate', 'false'); // Fix Thai character splitting
+    lyricsEl.setAttribute('font-family', "'Kanit', sans-serif");
     
     container.appendChild(lyricsEl);
 }
