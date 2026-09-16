@@ -120,5 +120,21 @@ export async function searchSpotify(query) {
 }
 
 export async function getFeaturedPlaylists() {
-    return await fetchWebApi('v1/browse/featured-playlists?limit=10');
+    try {
+        const data = await fetchWebApi('v1/browse/featured-playlists?limit=12&locale=th_TH');
+        if (data && data.playlists && data.playlists.items && data.playlists.items.length > 0) {
+            return data;
+        }
+    } catch (e) {
+        console.warn('Featured playlists failed, trying user playlists...');
+    }
+    // Fallback: get user's own playlists
+    try {
+        const data = await fetchWebApi('v1/me/playlists?limit=12');
+        // Wrap in same structure
+        return { playlists: data };
+    } catch (e) {
+        console.error('Failed to fetch playlists:', e);
+        return null;
+    }
 }
