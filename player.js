@@ -2,28 +2,45 @@
 
 import { fetchWebApi } from './spotify.js';
 
-let player;
 let deviceId;
+let _onStateChange;
+let _onReady;
+
+// Define GLOBALLY at module load time so SDK can always find it
+let sdkIsReady = false;
+let pendingInit = null;
+
+window.onSpotifyWebPlaybackSDKReady = () => {
+    sdkIsReady = true;
+    if (pendingInit) {
+        pendingInit();
+        pendingInit = null;
+    }
+};
 
 export function initSpotifyPlayer(token, onStateChange, onReady) {
-    window.onSpotifyWebPlaybackSDKReady = () => {
-        player = new Spotify.Player({
+    _onStateChange = onStateChange;
+    _onReady = onReady;
+
+    const setup = () => {
+        const player = new Spotify.Player({
             name: 'R Music Web Player',
             getOAuthToken: cb => { cb(token); },
             volume: 0.5
         });
 
-        // Error handling
         player.addListener('initialization_error', ({ message }) => {
             console.error('Init error:', message);
-            showToast('❌ ไม่สามารถเริ่ม Player ได้: ' + message, 'error');
+            showToast('❌ ไม่สามารถเริ่ม Player ได้', 'error');
         });
         player.addListener('authentication_error', ({ message }) => {
             console.error('Auth error:', message);
             showToast('❌ Authentication ล้มเหลว กรุณาล็อกอินใหม่', 'error');
+            localStorage.removeItem('spotify_access_token');
+            setTimeout(() => window.location.reload(), 2000);
         });
         player.addListener('account_error', ({ message }) => {
-            console.error('Account error:', message);
+            console.error('Account error (no Premium?):', message);
             showPremiumRequiredModal();
         });
         player.addListener('playback_error', ({ message }) => {
@@ -31,31 +48,33 @@ export function initSpotifyPlayer(token, onStateChange, onReady) {
             showToast('❌ เกิดข้อผิดพลาดในการเล่นเพลง', 'error');
         });
 
-        // Playback status updates
         player.addListener('player_state_changed', state => {
-            if (onStateChange) onStateChange(state);
+            if (_onStateChange) _onStateChange(state);
         });
 
-        // Ready
         player.addListener('ready', ({ device_id }) => {
             console.log('Ready with Device ID', device_id);
             deviceId = device_id;
             transferPlaybackHere(device_id);
-            if (onReady) onReady();
+            if (_onReady) _onReady();
+            showToast('✅ Player พร้อมใช้งานแล้ว!', 'info');
         });
 
-        // Not Ready
         player.addListener('not_ready', ({ device_id }) => {
-            console.log('Device ID has gone offline', device_id);
-            showToast('⚠️ Player ออฟไลน์ กรุณารีเฟรชหน้าเว็บ', 'warning');
+            console.log('Device offline:', device_id);
         });
 
         player.connect();
     };
+
+    if (sdkIsReady) {
+        setup(); // SDK already fired, call directly
+    } else {
+        pendingInit = setup; // Wait for SDK to fire
+    }
 }
 
 function showPremiumRequiredModal() {
-    // Remove existing modal if any
     const existing = document.getElementById('premium-modal');
     if (existing) existing.remove();
 
@@ -69,8 +88,8 @@ function showPremiumRequiredModal() {
             <p>R Music ใช้ Spotify Web Playback SDK ซึ่ง<strong>ต้องการบัญชี Spotify Premium</strong> เพื่อเล่นเพลงบนเว็บบราวเซอร์ครับ</p>
             <div class="premium-features">
                 <div class="premium-feature">✅ ฟังเพลงแบบไม่มีโฆษณา</div>
-                <div class="premium-feature">✅ เล่นเพลงผ่านเว็บบราวเซอร์</div>
-                <div class="premium-feature">✅ ดูเนื้อเพลงแบบ Sync</div>
+                <div class="premium-feature">✅ เล่นเพลงผ่านเว็บบราวเซอร์ได้</div>
+                <div class="premium-feature">✅ ดูเนื้อเพลง Sync ได้</div>
             </div>
             <div class="premium-actions">
                 <a href="https://www.spotify.com/premium/" target="_blank" class="btn-premium">
@@ -84,7 +103,6 @@ function showPremiumRequiredModal() {
     `;
     document.body.appendChild(modal);
 
-    // Add styles dynamically
     if (!document.getElementById('premium-modal-styles')) {
         const style = document.createElement('style');
         style.id = 'premium-modal-styles';
@@ -153,11 +171,15 @@ export function showToast(message, type = 'info') {
                 backdrop-filter: blur(10px); z-index: 500;
                 animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards;
                 white-space: nowrap; font-family: 'Outfit', sans-serif;
+                pointer-events: none;
             }
-            .toast-error { background: rgba(220, 50, 50, 0.85); color: white; }
-            .toast-warning { background: rgba(220, 150, 30, 0.85); color: white; }
-            .toast-info { background: rgba(29, 185, 84, 0.85); color: white; }
-            @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+            .toast-error { background: rgba(220, 50, 50, 0.9); color: white; }
+            .toast-warning { background: rgba(220, 150, 30, 0.9); color: white; }
+            .toast-info { background: rgba(29, 185, 84, 0.9); color: white; }
+            @keyframes toastIn {
+                from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+                to { opacity: 1; transform: translateX(-50%) translateY(0); }
+            }
             @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
         `;
         document.head.appendChild(style);
@@ -194,18 +216,11 @@ export async function playTrack(uri) {
 }
 
 export function togglePlay() {
-    if (player) player.togglePlay();
+    if (window._spotifyPlayer) window._spotifyPlayer.togglePlay();
 }
-
 export function nextTrack() {
-    if (player) player.nextTrack();
+    if (window._spotifyPlayer) window._spotifyPlayer.nextTrack();
 }
-
 export function previousTrack() {
-    if (player) player.previousTrack();
-}
-
-export async function getCurrentState() {
-    if (player) return await player.getCurrentState();
-    return null;
+    if (window._spotifyPlayer) window._spotifyPlayer.previousTrack();
 }
