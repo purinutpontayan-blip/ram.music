@@ -74,7 +74,7 @@ export function initSpotifyPlayer(token, onStateChange, onReady) {
     }
 }
 
-function showPremiumRequiredModal() {
+export function showPremiumRequiredModal() {
     const existing = document.getElementById('premium-modal');
     if (existing) existing.remove();
 
