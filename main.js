@@ -1,6 +1,5 @@
 // src/main.js
 import './style.css';
-import '@uimaxbai/am-lyrics';
 
 import { loginWithSpotify, handleRedirect, getUserProfile, getFeaturedPlaylists, searchSpotify } from './spotify.js';
 import { initSpotifyPlayer, playTrack, togglePlay, nextTrack, previousTrack, showPremiumRequiredModal } from './player.js';
