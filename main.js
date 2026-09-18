@@ -139,15 +139,21 @@ function setupLyricsComponent(track) {
     const container = document.getElementById('lyrics-container');
     container.innerHTML = ''; // clear old
 
-    const title = track.name;
-    const artist = track.artists.map(a => a.name).join(', ');
+    // Clean up the title to improve search accuracy (e.g., remove "- Remastered", "(feat. )")
+    let cleanTitle = track.name.split(' - ')[0];
+    cleanTitle = cleanTitle.split(' (')[0];
+    
+    // Use only the primary artist for a more accurate search
+    const primaryArtist = track.artists[0].name;
     const album = track.album.name;
 
     const lyricsEl = document.createElement('am-lyrics');
-    lyricsEl.setAttribute('song-title', title);
-    lyricsEl.setAttribute('song-artist', artist);
+    lyricsEl.setAttribute('song-title', cleanTitle);
+    lyricsEl.setAttribute('song-artist', primaryArtist);
     lyricsEl.setAttribute('song-album', album);
-    lyricsEl.setAttribute('query', `${title} ${artist}`);
+    
+    // Force the query to exactly "Title Artist"
+    lyricsEl.setAttribute('query', `${cleanTitle} ${primaryArtist}`);
     
     lyricsEl.setAttribute('autoscroll', 'true');
     lyricsEl.setAttribute('interpolate', 'false'); // Fix Thai character splitting
