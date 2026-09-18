@@ -1,8 +1,9 @@
 // src/main.js
 import './style.css';
+import '@uimaxbai/am-lyrics';
 
 import { loginWithSpotify, handleRedirect, getUserProfile, getFeaturedPlaylists, searchSpotify } from './spotify.js';
-import { initSpotifyPlayer, playTrack, togglePlay, nextTrack, previousTrack } from './player.js';
+import { initSpotifyPlayer, playTrack, togglePlay, nextTrack, previousTrack, showPremiumRequiredModal } from './player.js';
 import * as UI from './ui.js';
 
 let accessToken = null;
@@ -19,7 +20,17 @@ async function init() {
 
         // Load Profile
         const profile = await getUserProfile();
-        if (profile) UI.renderUserProfile(profile);
+        if (profile) {
+            UI.renderUserProfile(profile);
+            
+            // Check for premium account
+            if (profile.product !== 'premium') {
+                showPremiumRequiredModal();
+                // Hide player elements to prevent errors
+                document.getElementById('player-screen').classList.add('hidden');
+                return; // Stop further initialization for non-premium
+            }
+        }
 
         // Load Featured Playlists
         const playlists = await getFeaturedPlaylists();
