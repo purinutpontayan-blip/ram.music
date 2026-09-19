@@ -8,6 +8,8 @@
   <title>R Music</title>
   <!-- Spotify Client ID — แก้ค่านี้ตรงนี้เลย -->
   <meta name="spotify-client-id" content="0c0581fc99704656885f8fbc84d0fcf6" />
+  <!-- Ranking API (Google Apps Script Web App URL ที่ลงท้ายด้วย /exec) — วาง URL ตรงนี้ -->
+  <meta name="ranking-api-url" content="" />
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -35,6 +37,7 @@
       <nav>
         <a href="#" class="nav-item active" data-target="home">Home</a>
         <a href="#" class="nav-item" data-target="search">Search</a>
+        <a href="#" class="nav-item" data-target="ranking">Ranking</a>
       </nav>
       <div class="user-profile" id="user-profile"></div>
     </aside>
@@ -63,6 +66,22 @@
           <h3>Tracks</h3>
           <div class="tracks-list" id="search-results"></div>
         </div>
+      </div>
+
+      <div class="view" id="view-ranking">
+        <div class="rank-header">
+          <h2>🏆 จัดอันดับเพลง TOP 20</h2>
+          <p class="rank-sub">ค้นหาเพลงแล้วส่งเข้าอันดับ ถ้ามีคนส่งเพลงเดียวกัน คะแนนจะรวมกัน (1 คนโหวตได้ 1 ครั้งต่อเพลง)</p>
+        </div>
+        <div class="rank-search glass-panel">
+          <input type="text" id="ranking-search-input" placeholder="ค้นหาเพลงที่ต้องการส่งเข้าอันดับ..." autocomplete="off" />
+        </div>
+        <div class="tracks-list rank-search-results" id="ranking-search-results"></div>
+        <div class="rank-list-head">
+          <h3>อันดับปัจจุบัน</h3>
+          <button type="button" id="btn-ranking-refresh" class="rank-refresh">รีเฟรช</button>
+        </div>
+        <div class="rank-list" id="ranking-list"></div>
       </div>
 
       <div class="view" id="view-artist">
@@ -166,6 +185,31 @@
       </div>
       <div class="lyrics-right">
         <div id="lyrics-container" class="lyrics-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ranking Submit Modal -->
+  <div id="ranking-modal" class="playlist-modal hidden">
+    <div class="playlist-modal-content glass-panel rk-modal">
+      <h3>ส่งเพลงเข้าอันดับ</h3>
+      <div class="rk-preview">
+        <img id="rk-cover-preview" alt="ปกเพลง" />
+        <div class="rk-preview-info">
+          <div id="rk-title" class="rk-title"></div>
+          <div id="rk-artist" class="rk-artist"></div>
+          <div id="rk-duration" class="rk-duration"></div>
+        </div>
+      </div>
+      <label class="rk-file" for="rk-cover-file">
+        <input type="file" id="rk-cover-file" accept="image/png,image/jpeg,image/gif" />
+        <span>🖼️ เปลี่ยนรูปปกเอง (PNG / JPG / GIF ไม่เกิน 1.5MB)</span>
+      </label>
+      <p class="rk-hint">รูปปกที่อัปโหลดจะใช้เมื่อเป็นเพลงที่ยังไม่เคยอยู่ในอันดับเท่านั้น</p>
+      <button type="button" id="rk-cover-reset" class="rk-link hidden">↩ ใช้ปกเดิมจาก Spotify</button>
+      <div class="rk-actions">
+        <button type="button" id="rk-cancel" class="btn-close-playlist">ยกเลิก</button>
+        <button type="button" id="rk-submit" class="btn-primary">ส่งเข้าอันดับ</button>
       </div>
     </div>
   </div>
