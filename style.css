@@ -1685,3 +1685,55 @@ am-lyrics {
   .rank-add-btn { padding: .45rem .75rem; font-size: .78rem; }
   .rank-search-results .rank-duration { display: none; }
 }
+
+/* สัญลักษณ์ E (Explicit) */
+.rank-explicit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-right: .4rem;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .55);
+  color: #111;
+  font-size: .68rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   RANKING — เลือกหัวข้อ (topics)
+   ============================================================ */
+.rank-topics { margin-bottom: 1.25rem; }
+.rank-topic-chips {
+  display: flex;
+  gap: .5rem;
+  overflow-x: auto;
+  padding-bottom: .35rem;
+  scrollbar-width: thin;
+}
+.rank-topic-chip {
+  flex-shrink: 0;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  font-size: .9rem;
+  font-weight: 500;
+  color: var(--text-main);
+  background: rgba(255, 255, 255, .08);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  padding: .45rem 1rem;
+  cursor: pointer;
+  transition: background .2s, transform .2s;
+}
+.rank-topic-chip:hover { background: rgba(255, 255, 255, .16); transform: translateY(-1px); }
+.rank-topic-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.rank-topic-chip.closed:not(.active) { color: var(--text-muted); }
+.rank-topic-desc { color: var(--text-muted); font-size: .92rem; line-height: 1.5; margin-top: .55rem; }
+.rank-topic-desc.hidden { display: none; }
