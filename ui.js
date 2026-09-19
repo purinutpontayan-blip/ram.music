@@ -82,21 +82,40 @@ export function updatePlayerUI(state) {
     const track = state.track_window.current_track;
     if (!track) return;
 
+    // Bottom Player UI
     document.getElementById('player-art').src = track.album.images[0]?.url;
     document.getElementById('player-art').classList.remove('hidden');
     document.getElementById('player-title').textContent = track.name;
     document.getElementById('player-artist').textContent = track.artists.map(a => a.name).join(', ');
 
-    // Play/Pause icon
+    // Modal UI
+    const modalArt = document.getElementById('lyrics-modal-art');
+    if (modalArt) modalArt.src = track.album.images[0]?.url;
+    
+    const modalTitle = document.getElementById('lyrics-modal-title');
+    if (modalTitle) modalTitle.textContent = track.name;
+    
+    const modalArtist = document.getElementById('lyrics-modal-artist');
+    if (modalArtist) modalArtist.textContent = track.artists.map(a => a.name).join(', ');
+
+    // Play/Pause icon (Bottom Player)
     const iconPlay = document.getElementById('icon-play');
     const iconPause = document.getElementById('icon-pause');
+    
+    // Play/Pause icon (Modal)
+    const modalIconPlay = document.getElementById('lyrics-icon-play');
+    const modalIconPause = document.getElementById('lyrics-icon-pause');
     
     if (state.paused) {
         iconPlay.classList.remove('hidden');
         iconPause.classList.add('hidden');
+        if (modalIconPlay) modalIconPlay.classList.remove('hidden');
+        if (modalIconPause) modalIconPause.classList.add('hidden');
     } else {
         iconPlay.classList.add('hidden');
         iconPause.classList.remove('hidden');
+        if (modalIconPlay) modalIconPlay.classList.add('hidden');
+        if (modalIconPause) modalIconPause.classList.remove('hidden');
     }
 
     // Extract dominant color for ambient bg (Simulated for now, a real implementation would use color-thief or similar)
