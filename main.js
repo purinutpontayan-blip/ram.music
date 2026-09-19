@@ -92,6 +92,15 @@ function setupEventListeners() {
     document.getElementById('btn-close-lyrics').addEventListener('click', () => {
         UI.toggleLyricsModal();
     });
+    // Modal Lyrics Controls
+    const btnLyricsPlayPause = document.getElementById('btn-lyrics-play-pause');
+    if (btnLyricsPlayPause) btnLyricsPlayPause.addEventListener('click', togglePlay);
+    
+    const btnLyricsNext = document.getElementById('btn-lyrics-next');
+    if (btnLyricsNext) btnLyricsNext.addEventListener('click', nextTrack);
+    
+    const btnLyricsPrev = document.getElementById('btn-lyrics-prev');
+    if (btnLyricsPrev) btnLyricsPrev.addEventListener('click', previousTrack);
 }
 
 function handlePlayerStateChange(state) {
@@ -131,6 +140,7 @@ function updateLyricsComponent(positionMs, durationMs, paused) {
             currentPos += (now - lastTime);
             lastTime = now;
             lyricsEl.setAttribute('current-time', currentPos);
+            lyricsEl.currentTime = currentPos;
         }, 100);
     }
 }
@@ -152,8 +162,8 @@ function setupLyricsComponent(track) {
     lyricsEl.setAttribute('song-artist', primaryArtist);
     lyricsEl.setAttribute('song-album', album);
     
-    // Force the query to exactly "Title Artist"
-    lyricsEl.setAttribute('query', `${cleanTitle} ${primaryArtist}`);
+    // Try passing original raw title too as fallback if cleanTitle fails
+    // The library may be struggling with strict queries, so we let it use the song-title
     
     lyricsEl.setAttribute('autoscroll', 'true');
     lyricsEl.setAttribute('interpolate', 'false'); // Fix Thai character splitting
