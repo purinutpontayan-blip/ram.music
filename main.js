@@ -92,6 +92,13 @@ function setupEventListeners() {
         if (window._spotifyPlayer) {
             const state = await window._spotifyPlayer.getCurrentState();
             if (state) {
+                const lyricsContainer = document.getElementById('lyrics-container');
+                const containerEmpty = !lyricsContainer || lyricsContainer.children.length === 0;
+                const track = state.track_window?.current_track;
+                if (track && containerEmpty) {
+                    currentTrackData = null; // force re-setup
+                    setupLyricsComponent(track);
+                }
                 updateLyricsComponent(state.position, state.duration, state.paused);
             }
         }
@@ -216,7 +223,10 @@ function handlePlayerStateChange(state) {
     UI.updatePlayerUI(state);
 
     const track = state.track_window.current_track;
-    if (track && (!currentTrackData || currentTrackData.id !== track.id)) {
+    const lyricsContainer = document.getElementById('lyrics-container');
+    const containerEmpty = !lyricsContainer || lyricsContainer.children.length === 0;
+    
+    if (track && (!currentTrackData || currentTrackData.id !== track.id || containerEmpty)) {
         currentTrackData = track;
         setupLyricsComponent(track);
     }
