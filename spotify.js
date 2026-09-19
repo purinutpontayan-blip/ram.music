@@ -114,9 +114,10 @@ export async function fetchWebApi(endpoint, method = 'GET', body) {
     }
 
     if (!res.ok) {
-        if (res.status === 204) return null; // No content
         throw new Error(`API error: ${res.status}`);
     }
+
+    if (res.status === 204) return null; // Handle 204 No Content for successful requests without body
 
     return await res.json();
 }
