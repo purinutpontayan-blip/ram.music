@@ -72,7 +72,7 @@ const getArtistTopTracks = async (id, artistName) => {
 // Spotify's albums endpoint returns 400 if neither `market` nor a user-account country is present,
 // and the account country field was also removed from GET /me — so a hardcoded market is required.
 const DEFAULT_MARKET = 'TH';
-const getArtistAlbums = (id) => fetchWebApi(`v1/artists/${id}/albums?include_groups=album,single&market=${DEFAULT_MARKET}&limit=20`);
+const getArtistAlbums = (id) => fetchWebApi(`v1/artists/${id}/albums?include_groups=album,single&market=${DEFAULT_MARKET}&limit=10`);
 const getAlbum = (id) => fetchWebApi(`v1/albums/${id}?market=${DEFAULT_MARKET}`);
 const getAlbumTracks = (id) => fetchWebApi(`v1/albums/${id}/tracks?market=${DEFAULT_MARKET}&limit=50`);
 // Spotify replaced the old /me/following endpoints with generic library endpoints (Feb 2026).
