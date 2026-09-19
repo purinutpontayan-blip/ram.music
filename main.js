@@ -1,7 +1,7 @@
 // src/main.js
 import './style.css';
 
-import { loginWithSpotify, handleRedirect, getUserProfile, getFeaturedPlaylists, searchSpotify, fetchWebApi } from './spotify.js';
+import { loginWithSpotify, handleRedirect, getUserProfile, getRecentlyPlayed, searchSpotify, fetchWebApi, getArtist, getArtistTopTracks, getArtistAlbums } from './spotify.js';
 import { initSpotifyPlayer, playTrack, togglePlay, nextTrack, previousTrack, showPremiumRequiredModal } from './player.js';
 import * as UI from './ui.js';
 
@@ -32,12 +32,9 @@ async function init() {
             }
         }
 
-        // Load Featured Playlists
-        const playlists = await getFeaturedPlaylists();
-        if (playlists) UI.renderPlaylists(playlists, (uri) => {
-            // Simplified: just alert for playlists as we need context_uri for player which we haven't implemented fully
-            alert("Playing playlists not fully implemented in this demo. Try searching for a track!");
-        });
+        // Load Listening History
+        const historyData = await getRecentlyPlayed();
+        if (historyData) UI.renderHistory(historyData, playTrack);
 
         // Initialize Player
         initSpotifyPlayer(accessToken, handlePlayerStateChange, () => {
@@ -73,10 +70,10 @@ function setupEventListeners() {
         if (query.length > 2) {
             searchTimeout = setTimeout(async () => {
                 const results = await searchSpotify(query);
-                UI.renderSearchResults(results, playTrack);
+                UI.renderSearchResults(results, playTrack, handleArtistClick);
             }, 500);
         } else {
-            UI.renderSearchResults(null, null); // clear
+            UI.renderSearchResults(null, null, null); // clear
         }
     });
 
@@ -140,6 +137,14 @@ function setupEventListeners() {
     
     const btnLyricsPrev = document.getElementById('btn-lyrics-prev');
     if (btnLyricsPrev) btnLyricsPrev.addEventListener('click', previousTrack);
+}
+
+async function handleArtistClick(artistId) {
+    UI.showView('view-artist');
+    const artist = await getArtist(artistId);
+    const topTracks = await getArtistTopTracks(artistId);
+    const albums = await getArtistAlbums(artistId);
+    UI.renderArtistView(artist, topTracks, albums, playTrack);
 }
 
 function setupContextMenu() {
@@ -264,7 +269,9 @@ function updateLyricsComponent(positionMs, durationMs, paused) {
 
 async function setupLyricsComponent(track) {
     const container = document.getElementById('lyrics-container');
-    container.innerHTML = ''; // clear old
+    // Set loading state immediately so container is not empty
+    // This prevents concurrent handlePlayerStateChange calls from re-triggering setup
+    container.innerHTML = '<div class="lyrics-loading"></div>'; 
 
     // Clean up the title to improve search accuracy (e.g., remove "- Remastered", "(feat. )")
     let cleanTitle = track.name.split(' - ')[0];
@@ -284,6 +291,12 @@ async function setupLyricsComponent(track) {
         console.error("Failed to fetch ISRC", e);
     }
 
+    // Check if track changed while fetching
+    if (currentTrackData && currentTrackData.id !== track.id) {
+        return;
+    }
+
+    container.innerHTML = ''; // clear loading state
     const lyricsEl = document.createElement('am-lyrics');
     lyricsEl.setAttribute('song-title', cleanTitle);
     lyricsEl.setAttribute('song-artist', primaryArtist);
