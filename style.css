@@ -58,9 +58,9 @@ nav { display: flex; flex-direction: column; gap: .5rem; flex: 1; }
 h2 { font-size: 2rem; margin-bottom: 1.5rem; font-weight: 700; }
 h3 { font-size: 1.5rem; margin-bottom: 1rem; font-weight: 600; color: var(--text-muted); }
 .search-section { margin-bottom: 2rem; }
-.playlists-grid,.artists-grid,.albums-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: 1.5rem; }
-.history-grid { display: flex; gap: 1.5rem; overflow-x: auto; overflow-y: hidden; padding-bottom: .75rem; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
-.history-grid .history-card { flex: 0 0 180px; scroll-snap-align: start; }
+.playlists-grid,.artists-grid,.albums-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: 1.5rem; align-items: start; }
+.history-grid { display: flex; align-items: flex-start; gap: 1.5rem; overflow-x: auto; overflow-y: hidden; padding-bottom: .75rem; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.history-grid .history-card { flex: 0 0 180px; align-self: flex-start; scroll-snap-align: start; }
 .playlist-card,.track-item { background: rgba(255,255,255,.02); border-radius: 16px; padding: 1rem; transition: all .3s ease; cursor: pointer; }
 .playlist-card:hover,.track-item:hover { background: rgba(255,255,255,.08); transform: translateY(-5px); }
 .playlist-card img { width: 100%; aspect-ratio: 1; border-radius: 12px; margin-bottom: 1rem; object-fit: cover; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
