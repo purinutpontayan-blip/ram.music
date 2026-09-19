@@ -420,10 +420,78 @@ h2 {
 }
 
 .lyrics-modal.hidden {
-  display: flex !important; /* Keep display flex to allow transform animation */
+  display: flex !important;
   transform: translateY(100%);
   opacity: 0;
   pointer-events: none;
+}
+
+/* Animated ambient blobs (Apple Music style) */
+.modal-blobs {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.8;
+  will-change: transform;
+}
+
+.blob-1 {
+  width: 60vw;
+  height: 60vw;
+  top: -15%;
+  left: -10%;
+  background: var(--blob1, rgba(80,80,200,0.6));
+  animation: blob-move-1 14s ease-in-out infinite alternate;
+}
+
+.blob-2 {
+  width: 55vw;
+  height: 55vw;
+  bottom: -20%;
+  right: -10%;
+  background: var(--blob2, rgba(200,80,80,0.5));
+  animation: blob-move-2 18s ease-in-out infinite alternate;
+}
+
+.blob-3 {
+  width: 40vw;
+  height: 40vw;
+  top: 30%;
+  left: 30%;
+  background: var(--blob3, rgba(80,160,100,0.35));
+  animation: blob-move-3 22s ease-in-out infinite alternate;
+}
+
+@keyframes blob-move-1 {
+  0%   { transform: translate(0,   0)   scale(1); }
+  33%  { transform: translate(8%,  12%) scale(1.1); }
+  66%  { transform: translate(-5%, 20%) scale(0.95); }
+  100% { transform: translate(12%, 5%)  scale(1.05); }
+}
+@keyframes blob-move-2 {
+  0%   { transform: translate(0,   0)   scale(1); }
+  33%  { transform: translate(-10%, -8%)  scale(1.08); }
+  66%  { transform: translate(6%,  -15%) scale(1.12); }
+  100% { transform: translate(-5%, 10%)  scale(0.95); }
+}
+@keyframes blob-move-3 {
+  0%   { transform: translate(0,   0)   scale(1); }
+  50%  { transform: translate(-15%, 10%) scale(1.2); }
+  100% { transform: translate(10%, -12%) scale(0.9); }
+}
+
+/* Ensure all modal content appears above blobs */
+.lyrics-modal > *:not(.modal-blobs) {
+  position: relative;
+  z-index: 1;
 }
 
 /* Lyrics modal top-right button group */
