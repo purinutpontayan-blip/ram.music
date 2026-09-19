@@ -102,15 +102,38 @@ body {
   grid-template-areas: "sidebar main" "player player";
 }
 
+@property --amb1 { syntax: '<color>'; inherits: false; initial-value: rgba(29, 185, 84, 0.4); }
+@property --amb2 { syntax: '<color>'; inherits: false; initial-value: rgba(29, 185, 84, 0); }
+@property --amb3 { syntax: '<color>'; inherits: false; initial-value: rgba(29, 185, 84, 0); }
+@property --amb4 { syntax: '<color>'; inherits: false; initial-value: rgba(29, 185, 84, 0); }
+@property --amb5 { syntax: '<color>'; inherits: false; initial-value: rgba(29, 185, 84, 0); }
+
 .ambient-background {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: radial-gradient(circle at 50% 0%, var(--accent-glow) 0%, transparent 50%);
+  top: -15%;
+  left: -15%;
+  width: 130%;
+  height: 130%;
+  background:
+    radial-gradient(ellipse at 20% 12%, var(--amb1) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 20%, var(--amb2) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 88%, var(--amb3) 0%, transparent 55%),
+    radial-gradient(ellipse at 15% 85%, var(--amb4) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, var(--amb5) 0%, transparent 60%);
   z-index: -1;
-  transition: background 1s ease;
+  transition: --amb1 1.4s ease, --amb2 1.4s ease, --amb3 1.4s ease, --amb4 1.4s ease, --amb5 1.4s ease;
+  animation: ambient-drift 30s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes ambient-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(3%, -2%) scale(1.06); }
+  100% { transform: translate(-3%, 3%) scale(1.02); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-background, .blob { animation: none !important; }
 }
 
 .sidebar {
@@ -164,6 +187,100 @@ nav {
   width: 32px;
   height: 32px;
   border-radius: 50%;
+}
+
+.user-profile-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  color: var(--text-main);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background .2s;
+}
+
+.user-profile-btn:hover {
+  background: rgba(255, 255, 255, .08);
+}
+
+.user-profile-btn .user-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-profile-btn .user-chevron {
+  color: var(--text-muted);
+  font-size: .8rem;
+}
+
+.avatar-fallback {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.account-menu {
+  position: fixed;
+  z-index: 1500;
+  min-width: 210px;
+  background: rgba(30, 30, 35, .97);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: .4rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+}
+
+.account-menu-header {
+  padding: .6rem .9rem;
+  color: var(--text-muted);
+  font-size: .85rem;
+  border-bottom: 1px solid var(--glass-border);
+  margin-bottom: .3rem;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-item {
+  display: block;
+  width: 100%;
+  padding: .7rem .9rem;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-main);
+  font: inherit;
+  font-size: .95rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background .2s;
+}
+
+.account-menu-item:hover {
+  background: rgba(255, 255, 255, .1);
+}
+
+.account-menu-item.danger {
+  color: #ff6b6b;
 }
 
 .main-content {
@@ -483,6 +600,7 @@ h3 {
   filter: blur(80px);
   opacity: .8;
   will-change: transform;
+  transition: background-color 1.4s ease;
 }
 
 .blob-1 {
@@ -510,6 +628,24 @@ h3 {
   left: 30%;
   background: var(--blob3, rgba(80, 160, 100, .35));
   animation: blob-move-3 22s ease-in-out infinite alternate;
+}
+
+.blob-4 {
+  width: 45vw;
+  height: 45vw;
+  top: -12%;
+  right: -8%;
+  background: var(--blob4, rgba(200, 160, 60, .5));
+  animation: blob-move-2 20s ease-in-out infinite alternate-reverse;
+}
+
+.blob-5 {
+  width: 50vw;
+  height: 50vw;
+  bottom: -15%;
+  left: -8%;
+  background: var(--blob5, rgba(60, 180, 180, .5));
+  animation: blob-move-1 24s ease-in-out infinite alternate-reverse;
 }
 
 @keyframes blob-move-1 {
@@ -623,7 +759,7 @@ h3 {
 }
 
 .lyrics-left img {
-  width: 100%;
+  width: min(100%, 45vh);
   aspect-ratio: 1;
   border-radius: 12px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, .5);
@@ -842,9 +978,157 @@ am-lyrics {
   border-left: 4px solid var(--accent);
 }
 
+/* ============ Seek bar (แถบเลือกจุดเพลง) ============ */
+.player-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+}
+
+.player-center .player-controls {
+  flex: none;
+}
+
+.seek-row {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  width: 100%;
+}
+
+.seek-row-mini {
+  max-width: 520px;
+}
+
+.seek-time {
+  font-size: .75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 2.6rem;
+  user-select: none;
+}
+
+.seek-remaining {
+  text-align: right;
+}
+
+.seek-bar {
+  --track-h: 6px;
+  --thumb: 12px;
+  --pct: 0%;
+  --seek-fill: #fff;
+  --seek-track: rgba(255, 255, 255, .25);
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+.seek-bar:disabled {
+  cursor: default;
+  opacity: .6;
+}
+
+.seek-bar::-webkit-slider-runnable-track {
+  height: var(--track-h);
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--seek-fill) var(--pct), var(--seek-track) var(--pct));
+}
+
+.seek-bar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: var(--thumb);
+  height: var(--thumb);
+  margin-top: calc((var(--track-h) - var(--thumb)) / 2);
+  border-radius: 50%;
+  border: none;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .5);
+  opacity: 0;
+  transition: opacity .15s;
+}
+
+.seek-bar::-moz-range-track {
+  height: var(--track-h);
+  border-radius: 999px;
+  background: var(--seek-track);
+}
+
+.seek-bar::-moz-range-progress {
+  height: var(--track-h);
+  border-radius: 999px;
+  background: var(--seek-fill);
+}
+
+.seek-bar::-moz-range-thumb {
+  width: var(--thumb);
+  height: var(--thumb);
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0;
+  transition: opacity .15s;
+}
+
+.seek-bar:hover:not(:disabled)::-webkit-slider-thumb,
+.seek-bar:active::-webkit-slider-thumb,
+.seek-bar:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+}
+
+.seek-bar:hover:not(:disabled)::-moz-range-thumb,
+.seek-bar:active::-moz-range-thumb,
+.seek-bar:focus-visible::-moz-range-thumb {
+  opacity: 1;
+}
+
+.player .seek-bar:hover:not(:disabled) {
+  --seek-fill: var(--accent);
+}
+
+/* แถบในหน้าเนื้อเพลง: แถบอยู่บน เวลาอยู่ใต้ปลายซ้าย/ขวา (สไตล์ Apple Music) */
+.seek-row-lyrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  row-gap: .1rem;
+  margin-bottom: 1.5rem;
+}
+
+.seek-row-lyrics .seek-bar {
+  --track-h: 8px;
+  --thumb: 16px;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  width: 100%;
+}
+
+.seek-row-lyrics .seek-current {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.seek-row-lyrics .seek-remaining {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.seek-row-lyrics .seek-time {
+  font-size: .85rem;
+  color: rgba(255, 255, 255, .55);
+}
+
 @media (max-width:768px) {
   #app-screen {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 1fr var(--player-height) 60px;
     grid-template-areas: "main" "player" "sidebar";
   }
@@ -859,16 +1143,57 @@ am-lyrics {
     z-index: 30;
   }
 
-  .sidebar .logo,
+  .sidebar .logo {
+    display: none;
+  }
+
+  /* มือถือ: แสดงเฉพาะรูปโปรไฟล์ในแถบล่าง เพื่อเข้าเมนูสลับบัญชี/ออกจากระบบ */
+  .sidebar {
+    align-items: center;
+  }
+
   .sidebar .user-profile {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 0 12px;
+    border-top: none;
+    width: auto;
+  }
+
+  .sidebar .user-profile .user-profile-btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+  }
+
+  .sidebar .user-profile img,
+  .sidebar .user-profile .avatar-fallback {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border: 2px solid var(--accent);
+  }
+
+  .sidebar .user-profile .user-name,
+  .sidebar .user-profile .user-chevron {
     display: none;
   }
 
   .sidebar nav {
+    flex: 1;
+    min-width: 0;
     flex-direction: row;
-    width: 100%;
     justify-content: space-around;
     align-items: center;
+  }
+
+  .account-menu {
+    min-width: 200px;
   }
 
   .nav-item {
@@ -953,49 +1278,169 @@ am-lyrics {
     font-size: .8rem;
   }
 
+  /* ===== หน้าเนื้อเพลงบนมือถือ (สไตล์ Apple Music) =====
+     บน: ปกเล็ก + ชื่อเพลง/ศิลปิน | กลาง: เนื้อเพลงชิดซ้าย | ล่าง: แถบเวลา + ปุ่มควบคุมใหญ่ */
+  .lyrics-modal {
+    height: 100dvh;
+  }
+
+  .lyrics-modal .lyrics-modal-btns {
+    top: calc(env(safe-area-inset-top, 0px) + 1.4rem);
+    right: 1.25rem;
+    gap: .4rem;
+  }
+
+  .btn-modal-icon {
+    width: 40px;
+    height: 40px;
+  }
+
   .lyrics-layout {
-    flex-direction: column;
-    padding: 1rem;
-    padding-top: 4rem;
-    gap: 1.5rem;
-    justify-content: flex-start;
-    overflow-y: auto;
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "art details"
+      "lyrics lyrics"
+      "seek seek"
+      "controls controls";
+    column-gap: 1rem;
+    row-gap: 0;
+    align-items: center;
+    justify-content: stretch;
+    height: 100%;
+    padding: calc(env(safe-area-inset-top, 0px) + 1.25rem) 1.5rem calc(env(safe-area-inset-bottom, 0px) + 1.5rem);
+    overflow: hidden;
   }
 
   .lyrics-left {
-    max-width: 100%;
-    align-items: center;
-    text-align: center;
-    margin-left: 0;
+    display: contents;
   }
 
   .lyrics-left img {
-    width: 60%;
-    max-width: 250px;
-    margin-bottom: 1.5rem;
+    grid-area: art;
+    width: 84px;
+    height: 84px;
+    max-width: none;
+    margin: 0;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, .15);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .4);
+  }
+
+  .lyrics-track-details {
+    grid-area: details;
+    min-width: 0;
+    margin: 0;
+    padding-right: 5.6rem;
+    text-align: left;
   }
 
   .lyrics-track-title {
-    font-size: 1.5rem;
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin-bottom: .1rem;
   }
 
   .lyrics-track-artist {
     font-size: 1rem;
-  }
-
-  .lyrics-controls {
-    justify-content: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .lyrics-right {
+    grid-area: lyrics;
+    align-self: stretch;
+    position: relative;
     flex: none;
-    height: 50vh;
-    margin-right: 0;
+    height: auto;
+    min-height: 0;
     width: 100%;
+    margin: 1.25rem 0 .75rem;
+  }
+
+  .lyrics-container {
+    position: absolute;
+    inset: 0;
+    height: auto;
   }
 
   am-lyrics {
-    text-align: center;
+    text-align: left;
+    max-width: none;
+    --am-lyrics-compact-font-size: 32px;
+    --am-lyrics-compact-line-spacing: 26px;
+    --am-lyrics-compact-selected-position: 8%;
+    --am-lyrics-color-inactive: rgba(255, 255, 255, .35);
+  }
+
+  .seek-row-lyrics {
+    grid-area: seek;
+    margin-bottom: 1.25rem;
+  }
+
+  .lyrics-controls {
+    grid-area: controls;
+    justify-content: space-around;
+    padding: 0 1rem;
+  }
+
+  .lyrics-controls .btn-icon {
+    color: #fff;
+  }
+
+  .lyrics-controls .btn-icon svg {
+    width: 48px;
+    height: 48px;
+  }
+
+  .lyrics-controls .btn-play,
+  .lyrics-controls .btn-play:hover {
+    width: 72px;
+    height: 72px;
+    border-radius: 0;
+    background: transparent;
+    color: #fff;
+  }
+
+  .lyrics-controls .btn-play svg {
+    width: 64px;
+    height: 64px;
+  }
+
+  /* Player ย่อด้านล่างบนมือถือ: แถบเวลาบางๆ ติดขอบบน */
+  .player {
+    position: relative;
+  }
+
+  .player-center {
+    flex: none;
+    width: auto;
+  }
+
+  .seek-row-mini {
+    position: absolute;
+    top: -10px;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: none;
+    gap: 0;
+  }
+
+  .seek-row-mini .seek-time {
+    display: none;
+  }
+
+  .seek-row-mini .seek-bar {
+    --track-h: 3px;
+    --thumb: 12px;
+    height: 20px;
+  }
+
+  .seek-row-mini .seek-bar::-webkit-slider-runnable-track {
+    border-radius: 0;
   }
 
   .playlist-modal-content {
