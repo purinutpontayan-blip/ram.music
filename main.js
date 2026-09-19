@@ -16,14 +16,16 @@ function generateRandomString(length) {
 async function generateCodeChallenge(verifier) {
   const data = new TextEncoder().encode(verifier);
   const digest = await window.crypto.subtle.digest('SHA-256', data);
-  return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)])).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)])).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-async function loginWithSpotify() {
+async function loginWithSpotify(forceDialog = false) {
   if (!CLIENT_ID || CLIENT_ID === 'YOUR_CLIENT_ID_HERE') { alert('กรุณาใส่ Spotify Client ID ใน <meta name="spotify-client-id"> ใน index.html'); return; }
   const verifier = generateRandomString(128);
   const challenge = await generateCodeChallenge(verifier);
   localStorage.setItem('spotify_verifier', verifier);
-  const params = new URLSearchParams({ client_id: CLIENT_ID, response_type: 'code', redirect_uri: REDIRECT_URI, code_challenge_method: 'S256', code_challenge: challenge, scope: ['user-read-private','user-read-email','streaming','user-read-playback-state','user-modify-playback-state','user-library-read','user-library-modify','user-follow-read','user-follow-modify','playlist-read-private','playlist-read-collaborative','user-top-read','user-read-recently-played'].join(' ') });
+  const params = new URLSearchParams({ client_id: CLIENT_ID, response_type: 'code', redirect_uri: REDIRECT_URI, code_challenge_method: 'S256', code_challenge: challenge, scope: ['user-read-private', 'user-read-email', 'streaming', 'user-read-playback-state', 'user-modify-playback-state', 'user-library-read', 'user-library-modify', 'user-follow-read', 'user-follow-modify', 'playlist-read-private', 'playlist-read-collaborative', 'user-top-read', 'user-read-recently-played'].join(' ') });
+  // show_dialog=true บังคับให้ Spotify แสดงหน้าขออนุญาตใหม่ (ใช้ตอนสลับบัญชี / ขอสิทธิ์เพิ่ม)
+  if (forceDialog) params.set('show_dialog', 'true');
   window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
 async function handleRedirect() {
@@ -39,10 +41,30 @@ async function handleRedirect() {
       const data = await response.json();
       localStorage.setItem('spotify_access_token', data.access_token);
       localStorage.setItem('spotify_refresh_token', data.refresh_token);
+      console.log('Granted scopes:', data.scope);
       return data.access_token;
     } catch (error) { console.error('Error fetching token:', error); return null; }
   }
   return localStorage.getItem('spotify_access_token');
+}
+
+function clearSession() {
+  ['spotify_access_token', 'spotify_refresh_token', 'spotify_verifier'].forEach(k => localStorage.removeItem(k));
+}
+function disconnectPlayer() {
+  try { window._spotifyPlayer?.pause(); window._spotifyPlayer?.disconnect(); } catch (e) { }
+}
+// ออกจากระบบ: ล้าง token แล้วกลับไปหน้า Login
+function logout() {
+  disconnectPlayer();
+  clearSession();
+  window.location.replace('/');
+}
+// สลับบัญชี: ล้าง token แล้วส่งไปหน้า Spotify ใหม่ (มีลิงก์ "ไม่ใช่คุณ?" ให้เปลี่ยนบัญชี)
+function switchAccount() {
+  disconnectPlayer();
+  clearSession();
+  loginWithSpotify(true);
 }
 
 // ============================================================
@@ -52,7 +74,7 @@ async function fetchWebApi(endpoint, method = 'GET', body) {
   const token = localStorage.getItem('spotify_access_token');
   const res = await fetch(`https://api.spotify.com/${endpoint}`, { headers: { Authorization: `Bearer ${token}` }, method, body: body ? JSON.stringify(body) : undefined });
   if (res.status === 401) { localStorage.removeItem('spotify_access_token'); window.location.reload(); }
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) { const err = new Error(`API error: ${res.status}`); err.status = res.status; throw err; }
   if (res.status === 204) return null;
   return await res.json();
 }
@@ -75,14 +97,37 @@ const DEFAULT_MARKET = 'TH';
 const getArtistAlbums = (id) => fetchWebApi(`v1/artists/${id}/albums?include_groups=album,single&market=${DEFAULT_MARKET}&limit=10`);
 const getAlbum = (id) => fetchWebApi(`v1/albums/${id}?market=${DEFAULT_MARKET}`);
 const getAlbumTracks = (id) => fetchWebApi(`v1/albums/${id}/tracks?market=${DEFAULT_MARKET}&limit=50`);
-// Spotify replaced the old /me/following endpoints with generic library endpoints (Feb 2026).
-// uris go in the query string, not the body.
+// Follow/unfollow artist:
+// 1) ลอง endpoint ใหม่ /me/library (uris อยู่ใน query string)
+// 2) ถ้าไม่รองรับ artist (400/403/404) ให้ fallback ไป /me/following แบบเดิม
+const artistUri = (id) => `spotify:artist:${id}`;
+const canFallback = (e) => [400, 403, 404].includes(e?.status);
 const checkFollowsArtist = async (artistId) => {
-  const data = await fetchWebApi(`v1/me/library/contains?uris=${encodeURIComponent(`spotify:artist:${artistId}`)}`);
-  return Array.isArray(data) ? !!data[0] : false;
+  try {
+    const data = await fetchWebApi(`v1/me/library/contains?uris=${encodeURIComponent(artistUri(artistId))}`);
+    return Array.isArray(data) ? !!data[0] : false;
+  } catch (e) {
+    if (!canFallback(e)) throw e;
+    try {
+      const data = await fetchWebApi(`v1/me/following/contains?type=artist&ids=${artistId}`);
+      return Array.isArray(data) ? !!data[0] : false;
+    } catch (e2) { throw e; }
+  }
 };
-const followArtist = (artistId) => fetchWebApi(`v1/me/library?uris=${encodeURIComponent(`spotify:artist:${artistId}`)}`, 'PUT');
-const unfollowArtist = (artistId) => fetchWebApi(`v1/me/library?uris=${encodeURIComponent(`spotify:artist:${artistId}`)}`, 'DELETE');
+const followArtist = async (artistId) => {
+  try { return await fetchWebApi(`v1/me/library?uris=${encodeURIComponent(artistUri(artistId))}`, 'PUT'); }
+  catch (e) {
+    if (!canFallback(e)) throw e;
+    try { return await fetchWebApi(`v1/me/following?type=artist&ids=${artistId}`, 'PUT'); } catch (e2) { throw e; }
+  }
+};
+const unfollowArtist = async (artistId) => {
+  try { return await fetchWebApi(`v1/me/library?uris=${encodeURIComponent(artistUri(artistId))}`, 'DELETE'); }
+  catch (e) {
+    if (!canFallback(e)) throw e;
+    try { return await fetchWebApi(`v1/me/following?type=artist&ids=${artistId}`, 'DELETE'); } catch (e2) { throw e; }
+  }
+};
 
 // ============================================================
 // PLAYER
@@ -90,9 +135,9 @@ const unfollowArtist = (artistId) => fetchWebApi(`v1/me/library?uris=${encodeURI
 let deviceId, _onStateChange, _onReady;
 window.sdkIsReady = false;
 window.pendingInit = null;
-window.onSpotifyWebPlaybackSDKReady = () => { 
-  window.sdkIsReady = true; 
-  if (window.pendingInit) { window.pendingInit(); window.pendingInit = null; } 
+window.onSpotifyWebPlaybackSDKReady = () => {
+  window.sdkIsReady = true;
+  if (window.pendingInit) { window.pendingInit(); window.pendingInit = null; }
 };
 
 // Dynamically load the Spotify Web Playback SDK
@@ -117,14 +162,14 @@ function initSpotifyPlayer(token, onStateChange, onReady) {
   if (window.sdkIsReady) setup(); else window.pendingInit = setup;
 }
 async function transferPlaybackHere(device_id) {
-  try { await fetchWebApi('v1/me/player', 'PUT', { device_ids: [device_id], play: false }); } catch(e) {}
+  try { await fetchWebApi('v1/me/player', 'PUT', { device_ids: [device_id], play: false }); } catch (e) { }
 }
 async function playTrack(uri, contextUri) {
   if (!deviceId) { showToast('⚠️ Player ยังไม่พร้อม กรุณารอสักครู่', 'warning'); return; }
   try {
     const body = contextUri ? { context_uri: contextUri, offset: { uri } } : { uris: [uri] };
     await fetchWebApi(`v1/me/player/play?device_id=${deviceId}`, 'PUT', body);
-  } catch(e) { showToast('❌ ไม่สามารถเล่นเพลงนี้ได้', 'error'); }
+  } catch (e) { showToast('❌ ไม่สามารถเล่นเพลงนี้ได้', 'error'); }
 }
 const togglePlay = () => { if (window._spotifyPlayer) window._spotifyPlayer.togglePlay(); };
 const nextTrack = () => { if (window._spotifyPlayer) window._spotifyPlayer.nextTrack(); };
@@ -145,22 +190,61 @@ function showView(viewId) {
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.getElementById(viewId).classList.add('active');
   document.getElementById('search-bar-container').classList.toggle('hidden', viewId !== 'view-search');
-  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.target === viewId.replace('view-','')));
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.target === viewId.replace('view-', '')));
 }
 function renderUserProfile(profile) {
   const container = document.getElementById('user-profile');
+  const name = profile.display_name || profile.id || 'User';
   const imageUrl = profile.images?.length ? profile.images[0].url : '';
-  container.innerHTML = `<img src="${imageUrl}" alt="${profile.display_name}"><span>${profile.display_name}</span>`;
+  container.innerHTML = '';
+
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'user-profile-btn'; btn.title = 'บัญชีของฉัน';
+  btn.setAttribute('aria-haspopup', 'menu');
+
+  let avatar;
+  if (imageUrl) { avatar = document.createElement('img'); avatar.src = imageUrl; avatar.alt = ''; }
+  else { avatar = document.createElement('div'); avatar.className = 'avatar-fallback'; avatar.textContent = name.charAt(0).toUpperCase(); }
+  const label = document.createElement('span'); label.className = 'user-name'; label.textContent = name;
+  const chevron = document.createElement('span'); chevron.className = 'user-chevron'; chevron.textContent = '▴';
+  btn.append(avatar, label, chevron);
+  container.appendChild(btn);
+
+  // เมนูบัญชี (สร้างครั้งเดียว)
+  let menu = document.getElementById('account-menu');
+  if (menu) menu.remove();
+  menu = document.createElement('div');
+  menu.id = 'account-menu'; menu.className = 'account-menu hidden'; menu.setAttribute('role', 'menu');
+  menu.innerHTML = `
+    <div class="account-menu-header"></div>
+    <button type="button" class="account-menu-item" id="menu-switch-account" role="menuitem">🔄 สลับบัญชี</button>
+    <button type="button" class="account-menu-item danger" id="menu-logout" role="menuitem">🚪 ออกจากระบบ</button>`;
+  menu.querySelector('.account-menu-header').textContent = name;
+  document.body.appendChild(menu);
+
+  const closeMenu = () => menu.classList.add('hidden');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!menu.classList.contains('hidden')) { closeMenu(); return; }
+    menu.classList.remove('hidden');
+    const r = btn.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.bottom = `${window.innerHeight - r.top + 8}px`;
+  });
+  document.addEventListener('click', (e) => { if (!menu.contains(e.target)) closeMenu(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+  menu.querySelector('#menu-switch-account').addEventListener('click', () => { closeMenu(); switchAccount(); });
+  menu.querySelector('#menu-logout').addEventListener('click', () => { closeMenu(); logout(); });
 }
 function renderHistory(historyData, onPlay) {
   const container = document.getElementById('history-grid'); container.innerHTML = '';
   if (!historyData?.items) return;
   const unique = []; const uris = new Set();
   for (const item of historyData.items) { if (!uris.has(item.track.uri)) { uris.add(item.track.uri); unique.push(item.track); } }
-  unique.slice(0,12).forEach(track => {
+  unique.slice(0, 12).forEach(track => {
     if (!track) return;
     const div = document.createElement('div'); div.className = 'history-card playlist-card';
-    div.innerHTML = `<img src="${track.album.images[0]?.url}" alt="${track.name}"><div class="playlist-title">${track.name}</div><div class="playlist-owner">${track.artists.map(a=>a.name).join(', ')}</div>`;
+    div.innerHTML = `<img src="${track.album.images[0]?.url}" alt="${track.name}"><div class="playlist-title">${track.name}</div><div class="playlist-owner">${track.artists.map(a => a.name).join(', ')}</div>`;
     div.onclick = () => onPlay(track.uri);
     div.oncontextmenu = (e) => { e.preventDefault(); if (window.showTrackContextMenu) window.showTrackContextMenu(e, track); };
     container.appendChild(div);
@@ -170,21 +254,21 @@ function renderSearchResults(results, onPlay, onArtistClick, onAlbumClick) {
   const container = document.getElementById('search-results'), artistsContainer = document.getElementById('search-artists'), albumsContainer = document.getElementById('search-albums');
   container.innerHTML = ''; artistsContainer.innerHTML = ''; if (albumsContainer) albumsContainer.innerHTML = '';
   if (!results) return;
-  results.artists?.items?.slice(0,5).forEach(artist => {
+  results.artists?.items?.slice(0, 5).forEach(artist => {
     const div = document.createElement('div'); div.className = 'artist-card playlist-card';
     const imgUrl = artist.images?.[0]?.url || '';
     div.innerHTML = `<img src="${imgUrl}" alt="${artist.name}" style="border-radius:50%"><div class="playlist-title" style="text-align:center;margin-top:10px">${artist.name}</div>`;
     div.onclick = () => onArtistClick(artist.id); artistsContainer.appendChild(div);
   });
-  results.albums?.items?.slice(0,5).forEach(album => {
+  results.albums?.items?.slice(0, 5).forEach(album => {
     const div = document.createElement('div'); div.className = 'album-card playlist-card';
     const imgUrl = album.images?.[0]?.url || '';
-    div.innerHTML = `<img src="${imgUrl}" alt="${album.name}"><div class="playlist-title">${album.name}</div><div class="playlist-owner">${album.artists?.map(a=>a.name).join(', ') || ''}</div>`;
+    div.innerHTML = `<img src="${imgUrl}" alt="${album.name}"><div class="playlist-title">${album.name}</div><div class="playlist-owner">${album.artists?.map(a => a.name).join(', ') || ''}</div>`;
     div.onclick = () => onAlbumClick(album.id); albumsContainer?.appendChild(div);
   });
   results.tracks?.items?.forEach(track => {
     const div = document.createElement('div'); div.className = 'track-item';
-    div.innerHTML = `<img src="${track.album.images[0]?.url}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${track.name}</div><div class="track-item-artist">${track.artists.map(a=>a.name).join(', ')}</div></div>`;
+    div.innerHTML = `<img src="${track.album.images[0]?.url}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${track.name}</div><div class="track-item-artist">${track.artists.map(a => a.name).join(', ')}</div></div>`;
     div.onclick = () => onPlay(track.uri);
     div.oncontextmenu = (e) => { e.preventDefault(); if (window.showTrackContextMenu) window.showTrackContextMenu(e, track); };
     container.appendChild(div);
@@ -198,9 +282,9 @@ function renderArtistView(artist, topTracks, albums, onPlay, onAlbumClick, isFol
   const followBtn = document.getElementById('btn-follow-artist');
   if (followBtn && onToggleFollow) followBtn.onclick = onToggleFollow;
   const tracksContainer = document.getElementById('artist-top-tracks'); tracksContainer.innerHTML = '';
-  topTracks?.tracks?.slice(0,5).forEach(track => {
+  topTracks?.tracks?.slice(0, 5).forEach(track => {
     const div = document.createElement('div'); div.className = 'track-item';
-    div.innerHTML = `<img src="${track.album?.images?.[0]?.url || ''}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${track.name}</div><div class="track-item-artist">${track.artists?.map(a=>a.name).join(', ')}</div></div>`;
+    div.innerHTML = `<img src="${track.album?.images?.[0]?.url || ''}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${track.name}</div><div class="track-item-artist">${track.artists?.map(a => a.name).join(', ')}</div></div>`;
     div.onclick = () => onPlay(track.uri);
     div.oncontextmenu = (e) => { e.preventDefault(); if (window.showTrackContextMenu) window.showTrackContextMenu(e, track); };
     tracksContainer.appendChild(div);
@@ -217,14 +301,14 @@ function renderAlbumView(album, tracksData, onPlay) {
   const header = document.getElementById('album-header');
   const imgUrl = album.images?.[0]?.url || '';
   const year = album.release_date ? new Date(album.release_date).getFullYear() : '';
-  const artistNames = album.artists?.map(a=>a.name).join(', ') || '';
+  const artistNames = album.artists?.map(a => a.name).join(', ') || '';
   const totalTracks = album.total_tracks || tracksData?.items?.length || 0;
   header.innerHTML = `<div style="display:flex;align-items:center;gap:20px;margin-bottom:30px"><img src="${imgUrl}" alt="${album.name}" style="width:150px;height:150px;border-radius:12px;object-fit:cover;box-shadow:0 8px 24px rgba(0,0,0,.5)"><div><h1 style="font-size:2.5rem;margin:0">${album.name}</h1><p style="color:var(--text-muted);margin-top:10px">${artistNames}${year ? ' • ' + year : ''} • ${totalTracks} เพลง</p></div></div>`;
   const tracksContainer = document.getElementById('album-tracks'); tracksContainer.innerHTML = '';
   (tracksData?.items || []).forEach((track, idx) => {
     const div = document.createElement('div'); div.className = 'track-item';
     const trackWithAlbum = { ...track, album };
-    div.innerHTML = `<img src="${imgUrl}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${idx + 1}. ${track.name}</div><div class="track-item-artist">${track.artists?.map(a=>a.name).join(', ')}</div></div>`;
+    div.innerHTML = `<img src="${imgUrl}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${idx + 1}. ${track.name}</div><div class="track-item-artist">${track.artists?.map(a => a.name).join(', ')}</div></div>`;
     div.onclick = () => onPlay(track.uri, album.uri);
     div.oncontextmenu = (e) => { e.preventDefault(); if (window.showTrackContextMenu) window.showTrackContextMenu(e, trackWithAlbum); };
     tracksContainer.appendChild(div);
@@ -236,7 +320,7 @@ function updatePlayerUI(state) {
   document.getElementById('player-art').src = track.album.images[0]?.url;
   document.getElementById('player-art').classList.remove('hidden');
   document.getElementById('player-title').textContent = track.name;
-  document.getElementById('player-artist').textContent = track.artists.map(a=>a.name).join(', ');
+  document.getElementById('player-artist').textContent = track.artists.map(a => a.name).join(', ');
   const modalArt = document.getElementById('lyrics-modal-art');
   if (modalArt) { modalArt.crossOrigin = 'anonymous'; modalArt.src = track.album.images[0]?.url; modalArt.onload = () => extractAndApplyColor(modalArt); if (modalArt.complete && modalArt.naturalWidth > 0) extractAndApplyColor(modalArt); }
   const modalTitle = document.getElementById('lyrics-modal-title');
@@ -246,40 +330,115 @@ function updatePlayerUI(state) {
     requestAnimationFrame(() => { const inner = modalTitle.querySelector('.marquee-inner'); if (inner && inner.scrollWidth > modalTitle.clientWidth * 2 + 1) { modalTitle.classList.add('is-overflow'); } else { modalTitle.classList.remove('is-overflow'); modalTitle.innerHTML = `<span class="marquee-inner">${titleText}</span>`; } });
   }
   const modalArtist = document.getElementById('lyrics-modal-artist');
-  if (modalArtist) modalArtist.textContent = track.artists.map(a=>a.name).join(', ');
+  if (modalArtist) modalArtist.textContent = track.artists.map(a => a.name).join(', ');
   const iconPlay = document.getElementById('icon-play'), iconPause = document.getElementById('icon-pause');
   const modalIconPlay = document.getElementById('lyrics-icon-play'), modalIconPause = document.getElementById('lyrics-icon-pause');
   if (state.paused) { iconPlay.classList.remove('hidden'); iconPause.classList.add('hidden'); modalIconPlay?.classList.remove('hidden'); modalIconPause?.classList.add('hidden'); }
   else { iconPlay.classList.add('hidden'); iconPause.classList.remove('hidden'); modalIconPlay?.classList.add('hidden'); modalIconPause?.classList.remove('hidden'); }
 }
-function hslToRgb(h,s,l) { s/=100;l/=100; const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l),f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1))); return [Math.round(f(0)*255),Math.round(f(8)*255),Math.round(f(4)*255)]; }
-function rgbToHue(r,g,b) { r/=255;g/=255;b/=255; const max=Math.max(r,g,b),min=Math.min(r,g,b);let h=0; if(max!==min){const d=max-min; if(max===r) h=((g-b)/d+(g<b?6:0))/6; else if(max===g) h=((b-r)/d+2)/6; else h=((r-g)/d+4)/6;} return Math.round(h*360); }
-function applyColorToModal(r,g,b) {
-  document.documentElement.style.setProperty('--accent-glow',`rgba(${r},${g},${b},0.4)`);
-  const modal = document.getElementById('lyrics-modal'); if (!modal) return;
-  const [r2,g2,b2] = hslToRgb(((rgbToHue(r,g,b)+150)%360),65,40);
-  modal.style.setProperty('--blob1',`rgba(${r},${g},${b},0.6)`);
-  modal.style.setProperty('--blob2',`rgba(${r2},${g2},${b2},0.5)`);
-  modal.style.setProperty('--blob3',`rgba(${Math.round(r*.5)},${Math.round(g*.7)},${Math.round(b*.5)},0.35)`);
-  let blobLayer = modal.querySelector('.modal-blobs');
-  if (!blobLayer) { blobLayer = document.createElement('div'); blobLayer.className = 'modal-blobs'; blobLayer.innerHTML = '<div class="blob blob-1"></div><div class="blob blob-2"></div><div class="blob blob-3"></div>'; modal.insertBefore(blobLayer, modal.firstChild); }
+function hslToRgb(h, s, l) { s /= 100; l /= 100; const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)]; }
+function rgbToHue(r, g, b) { r /= 255; g /= 255; b /= 255; const max = Math.max(r, g, b), min = Math.min(r, g, b); let h = 0; if (max !== min) { const d = max - min; if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6; else if (max === g) h = ((b - r) / d + 2) / 6; else h = ((r - g) / d + 4) / 6; } return Math.round(h * 360); }
+// ------------------------------------------------------------
+// Palette จากปกอัลบั้ม: ดึงหลายสีจริงๆ ของภาพ แล้วเอาไปใช้เป็นพื้นหลัง
+// ------------------------------------------------------------
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  let h = 0, s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = l > .5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0); else if (max === g) h = (b - r) / d + 2; else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return [h, s * 100, l * 100];
 }
+const colorDist = (a, b) => Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
+
+// ดึงสีเด่นหลายสีที่ "ต่างกันจริง" จากภาพ (histogram + เลือกสีที่ห่างกัน)
+function extractPalette(imgEl, count = 5) {
+  const size = 64;
+  const canvas = document.createElement('canvas'); canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(imgEl, 0, 0, size, size);
+  const data = ctx.getImageData(0, 0, size, size).data; // ถ้าภาพโดน CORS บล็อก จะ throw ตรงนี้
+  const bins = new Map();
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 128) continue;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+    let e = bins.get(key); if (!e) { e = { n: 0, r: 0, g: 0, b: 0 }; bins.set(key, e); }
+    e.n++; e.r += r; e.g += g; e.b += b;
+  }
+  const cands = [...bins.values()].filter(e => e.n >= 6).map(e => {
+    const r = e.r / e.n, g = e.g / e.n, b = e.b / e.n;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), sat = max ? (max - min) / max : 0;
+    return { r, g, b, n: e.n, sat, score: e.n * (0.5 + sat) };
+  }).sort((x, y) => y.score - x.score);
+  const picked = [];
+  for (const minDist of [60, 40, 24]) {           // ผ่อนเกณฑ์ความต่างสีลงถ้าภาพมีสีน้อย
+    for (const c of cands) {
+      if (picked.length >= count) break;
+      if (picked.every(p => colorDist(p, c) > minDist)) picked.push(c);
+    }
+    if (picked.length >= count) break;
+  }
+  // สีสดขึ้นก่อน (จะได้ blob ใหญ่ๆ เป็นสีเด่น) สีเทา/ดำไว้ท้าย
+  picked.sort((x, y) => ((y.sat > .2) - (x.sat > .2)) || (y.score - x.score));
+  return picked;
+}
+
+// ปรับสีให้ไม่มืด/ไม่จางเกินไปเมื่อใช้เป็นพื้นหลัง แล้วเติมให้ครบ count สี
+function normalizePalette(picked, count = 5) {
+  const out = picked.map(c => {
+    let [h, s, l] = rgbToHsl(c.r, c.g, c.b);
+    if (s > 15) s = Math.min(90, Math.max(40, s * 1.15));
+    l = Math.min(62, Math.max(30, l));
+    return hslToRgb(h, s, l);
+  });
+  if (!out.length) out.push(hslToRgb(220, 55, 42));
+  const [bh, bs, bl] = rgbToHsl(...out[0]);
+  const shifts = [40, -40, 80, -80, 120, -120];
+  for (let i = 0; out.length < count; i++) out.push(hslToRgb((bh + shifts[i % shifts.length] + 360) % 360, Math.max(bs, 35), bl));
+  return out.slice(0, count);
+}
+
+function applyPalette(palette) {
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  document.documentElement.style.setProperty('--accent-glow', rgba(palette[0], 0.4));
+  // พื้นหลังหน้าหลัก: ไล่สี 5 สีจากปก
+  const amb = document.getElementById('ambient-bg');
+  if (amb) palette.forEach((c, i) => amb.style.setProperty(`--amb${i + 1}`, rgba(c, i === 0 ? .42 : .32)));
+  // พื้นหลังหน้าเนื้อเพลง: blob 5 ก้อน ก้อนละสี
+  const modal = document.getElementById('lyrics-modal'); if (!modal) return;
+  palette.forEach((c, i) => modal.style.setProperty(`--blob${i + 1}`, rgba(c, i < 3 ? .6 : .5)));
+  let blobLayer = modal.querySelector('.modal-blobs');
+  if (!blobLayer) {
+    blobLayer = document.createElement('div'); blobLayer.className = 'modal-blobs';
+    blobLayer.innerHTML = [1, 2, 3, 4, 5].map(n => `<div class="blob blob-${n}"></div>`).join('');
+    modal.insertBefore(blobLayer, modal.firstChild);
+  }
+}
+let _lastPaletteSrc = '';
 function extractAndApplyColor(imgEl) {
+  const src = imgEl.currentSrc || imgEl.src || '';
+  if (src && src === _lastPaletteSrc) return;   // ปกเดิม ไม่ต้องคำนวณซ้ำทุกครั้งที่ state เปลี่ยน
+  _lastPaletteSrc = src;
   try {
-    const canvas = document.createElement('canvas'); canvas.width = 50; canvas.height = 50;
-    const ctx = canvas.getContext('2d'); ctx.drawImage(imgEl,0,0,50,50);
-    const data = ctx.getImageData(0,0,50,50).data;
-    let bestR=30,bestG=30,bestB=30,bestSat=0;
-    for (let i=0;i<data.length;i+=4) { const r=data[i],g=data[i+1],b=data[i+2],max=Math.max(r,g,b),min=Math.min(r,g,b),sat=max===0?0:(max-min)/max,lum=(max+min)/510; if (sat>bestSat&&lum>.1&&lum<.9) { bestSat=sat;bestR=r;bestG=g;bestB=b; } }
-    applyColorToModal(bestR,bestG,bestB);
-  } catch(e) { const src=imgEl.src||''; let hash=0; for(let i=0;i<src.length;i++) hash=src.charCodeAt(i)+((hash<<5)-hash); const hue=Math.abs(hash)%360; const [r,g,b]=hslToRgb(hue,65,45); applyColorToModal(r,g,b); }
+    applyPalette(normalizePalette(extractPalette(imgEl)));
+  } catch (e) {
+    // ถ้าอ่านพิกเซลไม่ได้ (CORS) ใช้สีจาก hash ของ URL แทน
+    let hash = 0; for (let i = 0; i < src.length; i++) hash = src.charCodeAt(i) + ((hash << 5) - hash);
+    const hue = Math.abs(hash) % 360;
+    applyPalette([0, 45, -45, 90, -90].map(d => hslToRgb((hue + d + 360) % 360, 65, 45)));
+  }
 }
 function toggleLyricsModal() {
   const modal = document.getElementById('lyrics-modal');
-  if (!modal.classList.contains('hidden') && document.fullscreenElement) { document.exitFullscreen().then(()=>modal.classList.add('hidden')).catch(()=>modal.classList.add('hidden')); return; }
+  if (!modal.classList.contains('hidden') && document.fullscreenElement) { document.exitFullscreen().then(() => modal.classList.add('hidden')).catch(() => modal.classList.add('hidden')); return; }
   modal.classList.toggle('hidden');
 }
-function showToast(message, type='info') {
+function showToast(message, type = 'info') {
   let container = document.getElementById('toast-container');
   if (!container) { container = document.createElement('div'); container.id = 'toast-container'; container.className = 'toast-container'; document.body.appendChild(container); }
   const toast = document.createElement('div'); toast.className = `toast toast-${type}`; toast.textContent = message;
@@ -298,7 +457,7 @@ function updateLyricsComponent(positionMs, durationMs, paused) {
   if (positionMs !== undefined) { lyricsEl.setAttribute('current-time', positionMs); lyricsEl.setAttribute('duration', paused ? -1 : durationMs); }
   if (!paused && positionMs !== undefined) {
     let currentPos = positionMs, lastTime = performance.now();
-    lyricsUpdateInterval = setInterval(() => { const now = performance.now(); currentPos += (now-lastTime); lastTime = now; lyricsEl.setAttribute('current-time', currentPos); lyricsEl.currentTime = currentPos; }, 100);
+    lyricsUpdateInterval = setInterval(() => { const now = performance.now(); currentPos += (now - lastTime); lastTime = now; lyricsEl.setAttribute('current-time', currentPos); lyricsEl.currentTime = currentPos; }, 100);
   }
 }
 async function setupLyricsComponent(track) {
@@ -308,7 +467,7 @@ async function setupLyricsComponent(track) {
   const primaryArtist = track.artists[0].name;
   const album = track.album.name;
   let isrc = '';
-  try { const fullTrack = await fetchWebApi(`v1/tracks/${track.id}`); if (fullTrack?.external_ids?.isrc) isrc = fullTrack.external_ids.isrc; } catch(e) {}
+  try { const fullTrack = await fetchWebApi(`v1/tracks/${track.id}`); if (fullTrack?.external_ids?.isrc) isrc = fullTrack.external_ids.isrc; } catch (e) { }
   if (currentTrackData && currentTrackData.id !== track.id) return;
   container.innerHTML = '';
   const lyricsEl = document.createElement('am-lyrics');
@@ -320,10 +479,67 @@ async function setupLyricsComponent(track) {
   function fixThaiSpans(root) {
     root.querySelectorAll('.char:not(.th-ok)').forEach(span => {
       span.classList.add('th-ok');
-      if (span.textContent && THAI_COMBINING.test(span.textContent)) { let prev = span.previousElementSibling; while (prev && (!prev.classList.contains('char') || prev.style.display==='none')) prev = prev.previousElementSibling; if (prev) { prev.textContent += span.textContent; span.textContent = ''; span.style.display = 'none'; prev.style.setProperty('width', 'auto', 'important'); prev.style.setProperty('min-width', 'auto', 'important'); prev.style.setProperty('max-width', 'none', 'important'); prev.style.setProperty('overflow', 'visible', 'important'); prev.style.setProperty('white-space', 'pre', 'important'); } }
+      if (span.textContent && THAI_COMBINING.test(span.textContent)) { let prev = span.previousElementSibling; while (prev && (!prev.classList.contains('char') || prev.style.display === 'none')) prev = prev.previousElementSibling; if (prev) { prev.textContent += span.textContent; span.textContent = ''; span.style.display = 'none'; prev.style.setProperty('width', 'auto', 'important'); prev.style.setProperty('min-width', 'auto', 'important'); prev.style.setProperty('max-width', 'none', 'important'); prev.style.setProperty('overflow', 'visible', 'important'); prev.style.setProperty('white-space', 'pre', 'important'); } }
     });
   }
-  const waitForShadow = setInterval(() => { if (lyricsEl.shadowRoot) { clearInterval(waitForShadow); fixThaiSpans(lyricsEl.shadowRoot); new MutationObserver(()=>fixThaiSpans(lyricsEl.shadowRoot)).observe(lyricsEl.shadowRoot,{childList:true,subtree:true}); } }, 50);
+  const waitForShadow = setInterval(() => { if (lyricsEl.shadowRoot) { clearInterval(waitForShadow); fixThaiSpans(lyricsEl.shadowRoot); new MutationObserver(() => fixThaiSpans(lyricsEl.shadowRoot)).observe(lyricsEl.shadowRoot, { childList: true, subtree: true }); } }, 50);
+}
+
+// ============================================================
+// SEEK BAR (แถบเลือกจุดเพลง) — ใช้ร่วมกันทั้ง Player ด้านล่างและหน้าเนื้อเพลง
+// ============================================================
+const seekState = { position: 0, duration: 0, paused: true, ts: 0, dragging: false };
+function fmtTime(ms) {
+  const t = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+}
+function currentSeekPosition() {
+  if (seekState.paused) return seekState.position;
+  return Math.min(seekState.duration, seekState.position + (performance.now() - seekState.ts));
+}
+function renderSeek(posMs) {
+  const d = seekState.duration;
+  const pos = Math.max(0, Math.min(d || 0, posMs));
+  const pct = d ? pos / d : 0;
+  document.querySelectorAll('.seek-row').forEach(row => {
+    const bar = row.querySelector('.seek-bar');
+    bar.disabled = !d;
+    bar.value = Math.round(pct * 1000);
+    bar.style.setProperty('--pct', `${pct * 100}%`);
+    row.querySelector('.seek-current').textContent = fmtTime(pos);
+    row.querySelector('.seek-remaining').textContent = '-' + fmtTime(d - pos);
+  });
+}
+function syncSeekFromState(state) {
+  if (!state) return;
+  seekState.position = state.position; seekState.duration = state.duration;
+  seekState.paused = state.paused; seekState.ts = performance.now();
+  if (!seekState.dragging) renderSeek(state.position);
+}
+function setupSeekBars() {
+  document.querySelectorAll('.seek-bar').forEach(bar => {
+    // ระหว่างลาก: อัปเดตตัวเลขเวลาและแถบทุกอัน แต่ยังไม่สั่งเลื่อนเพลง
+    bar.addEventListener('input', () => { seekState.dragging = true; renderSeek(bar.value / 1000 * seekState.duration); });
+    // ปล่อยนิ้ว/เมาส์: สั่ง Spotify เลื่อนไปจุดนั้นจริง
+    bar.addEventListener('change', async () => {
+      const pos = Math.round(bar.value / 1000 * seekState.duration);
+      seekState.position = pos; seekState.ts = performance.now(); seekState.dragging = false;
+      renderSeek(pos);
+      try { await window._spotifyPlayer?.seek(pos); }
+      catch (e) { console.error('Seek error:', e); showToast('❌ ไม่สามารถเลื่อนเพลงได้', 'error'); }
+      updateLyricsComponent(pos, seekState.duration, seekState.paused);
+    });
+  });
+  // กันกรณีลากแล้วไม่มี change event (เช่น ปล่อยที่ค่าเดิม) ไม่ให้ค้างสถานะ dragging
+  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, () => setTimeout(() => { seekState.dragging = false; }, 150)));
+  // เดินเวลาต่อเองระหว่างที่ SDK ยังไม่ส่ง state ใหม่
+  setInterval(() => { if (!document.hidden && !seekState.dragging && !seekState.paused && seekState.duration) renderSeek(currentSeekPosition()); }, 250);
+  // ซิงก์กับ Player จริงทุก 5 วินาที กันเวลาเพี้ยน (เช่น บัฟเฟอร์)
+  setInterval(async () => {
+    if (!window._spotifyPlayer || seekState.dragging || seekState.paused) return;
+    try { syncSeekFromState(await window._spotifyPlayer.getCurrentState()); } catch (e) { }
+  }, 5000);
 }
 
 // ============================================================
@@ -354,6 +570,7 @@ async function init() {
 }
 
 function setupEventListeners() {
+  setupSeekBars();
   document.getElementById('login-button').addEventListener('click', loginWithSpotify);
   document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(`view-${e.target.dataset.target}`); }));
   let searchTimeout;
@@ -387,9 +604,9 @@ async function handleArtistClick(artistId) {
     document.getElementById('artist-header').innerHTML = 'กำลังโหลด...';
     document.getElementById('artist-top-tracks').innerHTML = '';
     document.getElementById('artist-albums').innerHTML = '';
-    
+
     const artist = await getArtist(artistId);
-    
+
     // Fetch these independently so if one fails, it doesn't break the whole page
     const [topTracks, albums, isFollowing] = await Promise.all([
       getArtistTopTracks(artistId, artist.name).catch(e => { console.error('Top tracks error:', e.message); return { tracks: [] }; }),
@@ -403,7 +620,11 @@ async function handleArtistClick(artistId) {
         if (isFollowingState) { await unfollowArtist(artistId); isFollowingState = false; showToast('เลิกติดตามแล้ว', 'info'); }
         else { await followArtist(artistId); isFollowingState = true; showToast('✅ ติดตามแล้ว', 'info'); }
         renderArtistView(artist, topTracks, albums, playTrack, handleAlbumClick, isFollowingState, toggleFollow);
-      } catch (e) { console.error('Toggle follow error:', e.message); showToast('❌ ไม่สามารถอัปเดตสถานะติดตามได้', 'error'); }
+      } catch (e) {
+        console.error('Toggle follow error:', e.message);
+        if (e.status === 403 && confirm('Spotify ไม่อนุญาตให้ติดตามศิลปินด้วยสิทธิ์ปัจจุบัน\n\nต้องเข้าสู่ระบบใหม่เพื่ออนุญาตสิทธิ์เพิ่ม ต้องการเข้าสู่ระบบใหม่ตอนนี้ไหม?')) { switchAccount(); return; }
+        showToast('❌ ไม่สามารถอัปเดตสถานะติดตามได้', 'error');
+      }
     };
 
     renderArtistView(artist, topTracks, albums, playTrack, handleAlbumClick, isFollowingState, toggleFollow);
@@ -437,7 +658,7 @@ function setupContextMenu() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu.classList.add('hidden'); });
   window.showTrackContextMenu = (e, track) => { currentContextTrack = track; menu.style.left = `${e.pageX}px`; menu.style.top = `${e.pageY}px`; menu.classList.remove('hidden'); };
   document.getElementById('menu-play-next').addEventListener('click', async () => {
-    if (currentContextTrack) { try { await fetchWebApi(`v1/me/player/queue?uri=${currentContextTrack.uri}`, 'POST'); showToast('✅ เพิ่มลงในคิวแล้ว', 'info'); } catch(e) { showToast('❌ ไม่สามารถเพิ่มลงคิวได้', 'error'); } }
+    if (currentContextTrack) { try { await fetchWebApi(`v1/me/player/queue?uri=${currentContextTrack.uri}`, 'POST'); showToast('✅ เพิ่มลงในคิวแล้ว', 'info'); } catch (e) { showToast('❌ ไม่สามารถเพิ่มลงคิวได้', 'error'); } }
     menu.classList.add('hidden');
   });
   document.getElementById('menu-add-playlist').addEventListener('click', async () => {
@@ -450,8 +671,8 @@ function setupContextMenu() {
         const myPlaylists = playlists.items.filter(p => p.owner.id === user.id);
         listContainer.innerHTML = '';
         if (myPlaylists.length === 0) { listContainer.innerHTML = 'ไม่พบเพลย์ลิสต์ของคุณ'; }
-        else { myPlaylists.forEach(p => { const item = document.createElement('div'); item.className = 'playlist-list-item'; item.textContent = p.name; item.onclick = async () => { try { await fetchWebApi(`v1/playlists/${p.id}/tracks?uris=${currentContextTrack.uri}`, 'POST'); showToast(`✅ เพิ่มเพลงลงใน ${p.name} แล้ว`, 'info'); document.getElementById('playlist-modal').classList.add('hidden'); } catch(err) { showToast('❌ ไม่สามารถเพิ่มเพลงได้', 'error'); } }; listContainer.appendChild(item); }); }
-      } catch(e) { listContainer.innerHTML = 'เกิดข้อผิดพลาดในการโหลดเพลย์ลิสต์'; }
+        else { myPlaylists.forEach(p => { const item = document.createElement('div'); item.className = 'playlist-list-item'; item.textContent = p.name; item.onclick = async () => { try { await fetchWebApi(`v1/playlists/${p.id}/tracks?uris=${currentContextTrack.uri}`, 'POST'); showToast(`✅ เพิ่มเพลงลงใน ${p.name} แล้ว`, 'info'); document.getElementById('playlist-modal').classList.add('hidden'); } catch (err) { showToast('❌ ไม่สามารถเพิ่มเพลงได้', 'error'); } }; listContainer.appendChild(item); }); }
+      } catch (e) { listContainer.innerHTML = 'เกิดข้อผิดพลาดในการโหลดเพลย์ลิสต์'; }
     }
     menu.classList.add('hidden');
   });
@@ -459,6 +680,7 @@ function setupContextMenu() {
 
 function handlePlayerStateChange(state) {
   if (!state) return;
+  syncSeekFromState(state);
   updatePlayerUI(state);
   const track = state.track_window.current_track;
   const lyricsContainer = document.getElementById('lyrics-container');
