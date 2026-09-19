@@ -3,6 +3,7 @@
 // ============================================================
 const CLIENT_ID = document.querySelector('meta[name="spotify-client-id"]')?.content || '';
 const REDIRECT_URI = window.location.origin;
+let isPremium = true; // false เมื่อรู้ว่าเป็นบัญชี Free (เล่นเพลงบนเว็บไม่ได้ แต่ยังค้นหา/เรียกดูได้)
 
 // ============================================================
 // SPOTIFY AUTH (PKCE)
@@ -165,6 +166,7 @@ async function transferPlaybackHere(device_id) {
   try { await fetchWebApi('v1/me/player', 'PUT', { device_ids: [device_id], play: false }); } catch (e) { }
 }
 async function playTrack(uri, contextUri) {
+  if (!isPremium) { showToast('⚠️ ต้องใช้ Spotify Premium เพื่อเล่นเพลง', 'warning'); return; }
   if (!deviceId) { showToast('⚠️ Player ยังไม่พร้อม กรุณารอสักครู่', 'warning'); return; }
   try {
     const body = contextUri ? { context_uri: contextUri, offset: { uri } } : { uris: [uri] };
@@ -175,11 +177,48 @@ const togglePlay = () => { if (window._spotifyPlayer) window._spotifyPlayer.togg
 const nextTrack = () => { if (window._spotifyPlayer) window._spotifyPlayer.nextTrack(); };
 const previousTrack = () => { if (window._spotifyPlayer) window._spotifyPlayer.previousTrack(); };
 
+// กล่องข้อความกลางจอ พร้อมปุ่ม "สลับบัญชี" / "ออกจากระบบ" เสมอ — กันเคสที่แอปใช้งานไม่ได้แล้วออกจากระบบไม่ได้
+function showAccountModal({ id = 'account-modal', icon = 'ℹ️', title, html, closable = false, retry = false }) {
+  document.getElementById(id)?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = id;
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(5px);z-index:3000;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div class="glass-panel" style="padding:2.2rem;border-radius:24px;text-align:center;max-width:440px;width:90%;max-height:90vh;overflow-y:auto;background:rgba(25,25,30,.95);">
+    <div style="font-size:2.6rem;margin-bottom:.8rem">${icon}</div>
+    <h2 style="font-size:1.4rem;margin-bottom:.9rem;color:#fff">${title}</h2>
+    <div style="color:#a0a0a5;line-height:1.7;margin-bottom:1.6rem;font-size:.95rem;text-align:left">${html}</div>
+    <div class="account-modal-btns" style="display:flex;flex-direction:column;gap:.6rem"></div>
+  </div>`;
+  const box = overlay.querySelector('.account-modal-btns');
+  const mk = (label, bg, color, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = `background:${bg};color:${color};border:none;padding:.85rem 1.5rem;border-radius:14px;cursor:pointer;font:inherit;font-weight:600;font-size:.95rem;`; b.addEventListener('click', fn); box.appendChild(b); };
+  if (retry) mk('🔁 ลองใหม่', '#1db954', '#fff', () => window.location.reload());
+  if (closable) mk('ดูเพลงต่อ (ไม่ฟังเพลง)', 'rgba(255,255,255,.12)', '#fff', () => overlay.remove());
+  mk('🔄 สลับบัญชี', 'rgba(255,255,255,.12)', '#fff', switchAccount);
+  mk('🚪 ออกจากระบบ', 'rgba(255,107,107,.15)', '#ff6b6b', logout);
+  document.body.appendChild(overlay);
+}
+// บัญชี Free: Spotify ไม่อนุญาตให้เล่นเพลงผ่านเว็บ (Web Playback SDK ต้องใช้ Premium)
 function showPremiumRequiredModal() {
-  const existing = document.getElementById('premium-modal'); if (existing) existing.remove();
-  const modal = document.createElement('div'); modal.id = 'premium-modal';
-  modal.innerHTML = `<div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);backdrop-filter:blur(5px);z-index:999;display:flex;align-items:center;justify-content:center;"><div class="glass-panel" style="padding:3rem;border-radius:24px;text-align:center;max-width:420px;width:90%;"><div style="font-size:3rem;margin-bottom:1rem">🎵</div><h2 style="font-size:1.6rem;margin-bottom:1rem;background:linear-gradient(135deg,#1db954,#1ed760);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">ต้องใช้ Spotify Premium</h2><p style="color:#a0a0a5;line-height:1.6;margin-bottom:2rem;">R Music ต้องการบัญชี <strong style="color:#fff">Spotify Premium</strong> เพื่อเล่นเพลงบนเว็บบราวเซอร์ครับ</p><a href="https://www.spotify.com/premium/" target="_blank" style="display:block;background:#1db954;color:white;padding:1rem 2rem;border-radius:30px;text-decoration:none;font-weight:700;margin-bottom:1rem;">อัปเกรดเป็น Premium</a><button onclick="document.getElementById('premium-modal').remove()" style="background:rgba(255,255,255,.1);color:#a0a0a5;border:none;padding:.75rem 2rem;border-radius:12px;cursor:pointer;font-size:.9rem;">ปิด</button></div></div>`;
-  document.body.appendChild(modal);
+  isPremium = false;
+  document.getElementById('player-screen')?.classList.add('hidden');
+  showAccountModal({
+    id: 'premium-modal', icon: '🎵', title: 'ต้องใช้ Spotify Premium เพื่อฟังเพลง', closable: true,
+    html: 'บัญชีนี้เป็นแบบ <strong style="color:#fff">Free</strong> ซึ่ง Spotify ไม่อนุญาตให้เล่นเพลงผ่านเว็บเพลเยอร์ได้<br><br>คุณยังค้นหาและเรียกดูศิลปิน/อัลบั้มได้ แต่จะกดเล่นเพลงไม่ได้ ถ้าต้องการฟัง ให้สลับไปใช้บัญชี Premium หรืออัปเกรดที่ <a href="https://www.spotify.com/premium/" target="_blank" rel="noopener" style="color:#1ed760">spotify.com/premium</a>'
+  });
+}
+// เข้าถึงข้อมูลบัญชีไม่ได้ (เช่น 403 เพราะยังไม่ได้เพิ่มบัญชีในแอป Development Mode)
+function showAccessError(e) {
+  if (e?.status === 403) {
+    showAccountModal({
+      id: 'access-error-modal', icon: '🔒', title: 'บัญชีนี้ยังใช้งานแอปไม่ได้',
+      html: 'Spotify ปฏิเสธการเข้าถึง (403) เพราะแอปนี้อยู่ใน <strong style="color:#fff">Development Mode</strong> ซึ่งอนุญาตเฉพาะบัญชีที่เจ้าของแอปเพิ่มไว้ (สูงสุด 5 คน)<br><br><strong style="color:#fff">วิธีแก้:</strong> เจ้าของแอปเข้า <em>developer.spotify.com/dashboard</em> → เลือกแอป → <em>User Management</em> → เพิ่มชื่อและอีเมลของบัญชีนี้ แล้วล็อกอินใหม่ หรือสลับไปใช้บัญชีอื่น'
+    });
+  } else {
+    showAccountModal({
+      id: 'access-error-modal', icon: '⚠️', title: 'โหลดข้อมูลไม่สำเร็จ', retry: true,
+      html: `เกิดข้อผิดพลาดขณะเชื่อมต่อ Spotify${e?.message ? ` (${String(e.message).replace(/[<>&]/g, '')})` : ''}<br>ลองใหม่อีกครั้ง หรือสลับ/ออกจากระบบแล้วเข้าใหม่`
+    });
+  }
 }
 
 // ============================================================
@@ -548,25 +587,36 @@ function setupSeekBars() {
 let accessToken = null, currentTrackData = null, currentContextTrack = null;
 
 async function init() {
-  accessToken = await handleRedirect();
-  if (accessToken) {
-    showScreen('app-screen');
-    document.getElementById('player-screen').classList.remove('hidden');
-    const profile = await getUserProfile();
-    if (profile) {
-      renderUserProfile(profile);
-      // Note: Spotify removed `product` (and `country`) from GET /me for Dev Mode apps (Feb 2026),
-      // so this premium check may no longer trigger reliably — kept for accounts where it's still present.
-      if (profile.product !== 'premium') { showPremiumRequiredModal(); document.getElementById('player-screen').classList.add('hidden'); return; }
-    }
-    const historyData = await getRecentlyPlayed();
-    if (historyData) renderHistory(historyData, playTrack);
-    initSpotifyPlayer(accessToken, handlePlayerStateChange, () => { console.log('Player is ready!'); });
-  } else {
-    showScreen('login-screen');
-  }
+  // ผูกปุ่ม/เมนูทั้งหมดก่อนเสมอ — ถ้าโหลดข้อมูลพลาดหรือเป็นบัญชี Free หน้าเว็บจะยังกดใช้/ออกจากระบบได้
   setupEventListeners();
   setupContextMenu();
+  try {
+    accessToken = await handleRedirect();
+    if (!accessToken) { showScreen('login-screen'); return; }
+    showScreen('app-screen');
+
+    let profile;
+    try { profile = await getUserProfile(); }
+    catch (e) {
+      console.error('Profile error:', e);
+      renderUserProfile({ display_name: 'บัญชีของฉัน' }); // ให้มีเมนูสลับบัญชี/ออกจากระบบเสมอ
+      showAccessError(e);
+      return;
+    }
+    if (profile) renderUserProfile(profile);
+    // Spotify อาจไม่ส่ง `product` มาใน Dev Mode (Feb 2026) จึงถือว่าเป็น Free ก็ต่อเมื่อมีค่าและไม่ใช่ premium
+    // ถ้าไม่มีค่า จะลองเริ่ม Player ก่อน แล้วให้ account_error ของ SDK เป็นตัวบอกว่าไม่ใช่ Premium
+    const isFree = !!profile?.product && profile.product !== 'premium';
+
+    getRecentlyPlayed().then(d => { if (d) renderHistory(d, playTrack); }).catch(e => console.error('History error:', e));
+
+    if (isFree) { showPremiumRequiredModal(); return; }
+    document.getElementById('player-screen').classList.remove('hidden');
+    initSpotifyPlayer(accessToken, handlePlayerStateChange, () => { console.log('Player is ready!'); });
+  } catch (e) {
+    console.error('Init error:', e);
+    showAccessError(e);
+  }
 }
 
 function setupEventListeners() {
@@ -689,4 +739,4 @@ function handlePlayerStateChange(state) {
   updateLyricsComponent(state.position, state.duration, state.paused);
 }
 
-init();
+init().catch(e => { console.error(e); showAccessError(e); });
