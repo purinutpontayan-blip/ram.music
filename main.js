@@ -624,7 +624,7 @@ function setupWakeLock() {
 // RANKING — จัดอันดับเพลง (Google Sheet + Apps Script)
 // ============================================================
 // URL ของ Apps Script Web App (ลงท้ายด้วย /exec) — วางตรงนี้ ไม่ต้องใส่ใน index.html
-const RANKING_API = ''; // เช่น 'https://script.google.com/macros/s/xxxxxxxx/exec'
+const RANKING_API = 'https://script.google.com/macros/s/AKfycbyxZaws0vfMVlzZijyO8ukeYGKd2IOJ3Y5LAOvok3pgRLU2GdOabnoaA3On2UvFz1i1wg/exec'; // เช่น 'https://script.google.com/macros/s/xxxxxxxx/exec'
 const RANKING_MAX_COVER = 1.5 * 1024 * 1024; // ต้องตรงกับ MAX_COVER_BYTES ใน Code.gs
 const RANKING_REFRESH_MS = 30000;
 let rankingTimer = null, rankingPick = null, rankingCustomCover = null, rankingBusy = false;
