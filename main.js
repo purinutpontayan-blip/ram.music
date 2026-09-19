@@ -60,9 +60,16 @@ const getUserProfile = () => fetchWebApi('v1/me');
 const getRecentlyPlayed = () => fetchWebApi('v1/me/player/recently-played?limit=20');
 const searchSpotify = (q) => fetchWebApi(`v1/search?q=${encodeURIComponent(q)}&type=track,artist,album&limit=10`);
 const getArtist = (id) => fetchWebApi(`v1/artists/${id}`);
-let userMarket = 'US';
-const getArtistTopTracks = (id) => fetchWebApi(`v1/artists/${id}/top-tracks?market=${userMarket}`);
-const getArtistAlbums = (id) => fetchWebApi(`v1/artists/${id}/albums?include_groups=album,single&market=${userMarket}&limit=20`);
+// Spotify removed GET /artists/{id}/top-tracks in the Feb 2026 API changes (Dev Mode apps).
+// Fall back to searching tracks by artist name and keeping only ones credited to this artist ID.
+const getArtistTopTracks = async (id, artistName) => {
+  const data = await fetchWebApi(`v1/search?q=${encodeURIComponent(`artist:"${artistName}"`)}&type=track&limit=10`);
+  const items = data?.tracks?.items || [];
+  const filtered = items.filter(t => t.artists?.some(a => a.id === id));
+  return { tracks: filtered.length ? filtered : items };
+};
+// The `market` param/field was also removed in that same update — omit it.
+const getArtistAlbums = (id) => fetchWebApi(`v1/artists/${id}/albums?include_groups=album,single&limit=20`);
 
 // ============================================================
 // PLAYER
@@ -290,7 +297,8 @@ async function init() {
     const profile = await getUserProfile();
     if (profile) {
       renderUserProfile(profile);
-      if (profile.country) userMarket = profile.country;
+      // Note: Spotify removed `product` (and `country`) from GET /me for Dev Mode apps (Feb 2026),
+      // so this premium check may no longer trigger reliably — kept for accounts where it's still present.
       if (profile.product !== 'premium') { showPremiumRequiredModal(); document.getElementById('player-screen').classList.add('hidden'); return; }
     }
     const historyData = await getRecentlyPlayed();
@@ -342,7 +350,7 @@ async function handleArtistClick(artistId) {
     
     // Fetch these independently so if one fails, it doesn't break the whole page
     const [topTracks, albums] = await Promise.all([
-      getArtistTopTracks(artistId).catch(e => { console.error('Top tracks error:', e.message); return { tracks: [] }; }),
+      getArtistTopTracks(artistId, artist.name).catch(e => { console.error('Top tracks error:', e.message); return { tracks: [] }; }),
       getArtistAlbums(artistId).catch(e => { console.error('Albums error:', e.message); return { items: [] }; })
     ]);
     
