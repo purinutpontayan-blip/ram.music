@@ -72,6 +72,12 @@ export function renderSearchResults(results, onPlayTrack) {
             </div>
         `;
         div.onclick = () => onPlayTrack(track.uri);
+        div.oncontextmenu = (e) => {
+            e.preventDefault();
+            if (window.showTrackContextMenu) {
+                window.showTrackContextMenu(e, track);
+            }
+        };
         container.appendChild(div);
     });
 }
