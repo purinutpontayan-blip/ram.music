@@ -1,7 +1,7 @@
 //============================================================
-// CONFIG — อ่าน Client ID จาก <meta> tag
+// CONFIG — Spotify Client ID
 // ============================================================
-const CLIENT_ID = document.querySelector('meta[name="spotify-client-id"]')?.content || '';
+const CLIENT_ID = '0c0581fc99704656885f8fbc84d0fcf6'; // Spotify Client ID — แก้ค่านี้ตรงนี้
 const REDIRECT_URI = window.location.origin;
 let isPremium = true; // false เมื่อรู้ว่าเป็นบัญชี Free (เล่นเพลงบนเว็บไม่ได้ แต่ยังค้นหา/เรียกดูได้)
 
@@ -20,7 +20,7 @@ async function generateCodeChallenge(verifier) {
   return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)])).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 async function loginWithSpotify(forceDialog = false) {
-  if (!CLIENT_ID || CLIENT_ID === 'YOUR_CLIENT_ID_HERE') { alert('กรุณาใส่ Spotify Client ID ใน <meta name="spotify-client-id"> ใน index.html'); return; }
+  if (!CLIENT_ID || CLIENT_ID === 'YOUR_CLIENT_ID_HERE') { alert('กรุณาใส่ Spotify Client ID ที่ตัวแปร CLIENT_ID ใน main.js'); return; }
   const verifier = generateRandomString(128);
   const challenge = await generateCodeChallenge(verifier);
   localStorage.setItem('spotify_verifier', verifier);
@@ -623,8 +623,8 @@ function setupWakeLock() {
 // ============================================================
 // RANKING — จัดอันดับเพลง (Google Sheet + Apps Script)
 // ============================================================
-// URL ของ Apps Script Web App อ่านจาก <meta name="ranking-api-url"> ใน index.html
-const RANKING_API = (document.querySelector('meta[name="ranking-api-url"]')?.content || '').trim();
+// URL ของ Apps Script Web App (ลงท้ายด้วย /exec) — วางตรงนี้ ไม่ต้องใส่ใน index.html
+const RANKING_API = ''; // เช่น 'https://script.google.com/macros/s/xxxxxxxx/exec'
 const RANKING_MAX_COVER = 1.5 * 1024 * 1024; // ต้องตรงกับ MAX_COVER_BYTES ใน Code.gs
 const RANKING_REFRESH_MS = 30000;
 let rankingTimer = null, rankingPick = null, rankingCustomCover = null, rankingBusy = false;
@@ -693,7 +693,7 @@ function renderRanking(items) {
 
 async function loadRanking(silent) {
   const box = document.getElementById('ranking-list'); if (!box) return;
-  if (!RANKING_API) { rankingNotice(box, 'ยังไม่ได้ตั้งค่า Ranking API — ใส่ URL ของ Apps Script ที่ meta "ranking-api-url" ใน index.html'); return; }
+  if (!RANKING_API) { rankingNotice(box, 'ยังไม่ได้ตั้งค่า Ranking API — ใส่ URL ของ Apps Script ที่ตัวแปร RANKING_API ใน main.js'); return; }
   if (!rankingTopic) { rankingNotice(box, rankingTopics.length ? 'เลือกหัวข้อด้านบนเพื่อดูอันดับ' : 'ยังไม่มีหัวข้อจัดอันดับ — รอผู้ดูแลสร้างหัวข้อ'); return; }
   const topicId = rankingTopic.topicId;
   if (!silent && !box.children.length) rankingNotice(box, 'กำลังโหลด...');
@@ -753,6 +753,7 @@ function renderTopicBar() {
   desc.textContent = !rankingTopics.length ? 'ยังไม่มีหัวข้อจัดอันดับ — รอผู้ดูแลสร้างหัวข้อ'
     : [rankingTopic?.description, note].filter(Boolean).join(' · ');
   desc.classList.toggle('hidden', !desc.textContent);
+  const listTitle = document.getElementById('ranking-list-title'); if (listTitle) listTitle.textContent = rankingTopic ? `อันดับ: ${rankingTopic.title}` : 'อันดับปัจจุบัน';
   const covUrl = rkSafeUrl(rankingTopic?.cover);
   cov.classList.remove('hidden'); if (covUrl) cov.src = covUrl; else cov.removeAttribute('src');
   cov.classList.toggle('hidden', !covUrl);
@@ -842,7 +843,10 @@ function openRankingModal(track) {
   document.getElementById('rk-cover-reset').classList.add('hidden');
   document.getElementById('rk-cover-preview').src = rankingPick.cover;
   document.getElementById('rk-title').textContent = rankingPick.title;
-  document.getElementById('rk-artist').textContent = rankingPick.artist;
+  const rkArtist = document.getElementById('rk-artist'); rkArtist.textContent = '';
+  if (rankingPick.explicit) rkArtist.appendChild(rkExplicitBadge());
+  rkArtist.appendChild(document.createTextNode(rankingPick.artist));
+  const rkHead = document.getElementById('rk-modal-heading'); if (rkHead) rkHead.textContent = `ส่งเพลงเข้าหัวข้อ: ${rankingTopic.title}`;
   document.getElementById('rk-duration').textContent = `ระยะเวลา ${rkFmt(rankingPick.durationMs)}`;
   document.getElementById('ranking-modal').classList.remove('hidden');
 }
