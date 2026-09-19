@@ -628,28 +628,34 @@ const RANKING_API = (document.querySelector('meta[name="ranking-api-url"]')?.con
 const RANKING_MAX_COVER = 1.5 * 1024 * 1024; // ต้องตรงกับ MAX_COVER_BYTES ใน Code.gs
 const RANKING_REFRESH_MS = 30000;
 let rankingTimer = null, rankingPick = null, rankingCustomCover = null, rankingBusy = false;
+let rankingTopics = [], rankingTopic = null; // หัวข้อจัดอันดับทั้งหมด / หัวข้อที่กำลังดูอยู่
+const RANKING_TOPIC_KEY = 'ranking_topic_id';
 
 const rkFmt = ms => { const s = Math.round((ms || 0) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const rkSafeUrl = u => (/^https:\/\//i.test(u || '') ? u : '');
 const rkEl = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+// สัญลักษณ์ E = เพลงที่มีเนื้อหาไม่เหมาะสม (Explicit) ข้อมูลมาจาก Spotify
+const rkExplicitBadge = () => { const b = rkEl('span', 'rank-explicit', 'E'); b.title = 'เนื้อหาไม่เหมาะสม (Explicit)'; return b; };
 const RK_ERRORS = {
   unauthorized: 'เซสชันหมดอายุ กรุณาออกจากระบบแล้วเข้าใหม่',
   invalid_song: 'ข้อมูลเพลงไม่ถูกต้อง',
   invalid_cover: 'รูปปกไม่ถูกต้อง (ต้องเป็น PNG / JPG / GIF)',
   cover_too_large: 'รูปปกใหญ่เกิน 1.5MB',
   cover_type: 'ไฟล์รูปต้องเป็น PNG, JPG หรือ GIF เท่านั้น',
-  busy: 'ระบบกำลังยุ่ง ลองใหม่อีกครั้ง'
+  busy: 'ระบบกำลังยุ่ง ลองใหม่อีกครั้ง',
+  topic_not_found: 'ไม่พบหัวข้อนี้ (อาจถูกลบไปแล้ว) กรุณากดรีเฟรช',
+  topic_closed: 'หัวข้อนี้ปิดโหวตแล้ว'
 };
 
-// GET (ไม่ส่ง payload) = ดึงอันดับ, POST = ส่งเพลง/โหวต
+// GET (ไม่ส่ง payload) = ดึงหัวข้อ/อันดับ (query = { action, topic }), POST = ส่งเพลง/โหวต
 // ใช้ Content-Type: text/plain เพื่อไม่ให้เกิด CORS preflight (Apps Script ไม่รองรับ OPTIONS)
-async function rankingApi(payload) {
+async function rankingApi(payload, query) {
   if (!RANKING_API) throw new Error('no_api');
   let res;
   if (payload) {
     res = await fetch(RANKING_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
   } else {
-    const q = new URLSearchParams({ action: 'list', user: currentUser?.id || '', _: Date.now() });
+    const q = new URLSearchParams({ action: 'list', user: currentUser?.id || '', ...query, _: Date.now() });
     res = await fetch(`${RANKING_API}?${q}`);
   }
   if (!res.ok) throw new Error('http_' + res.status);
@@ -661,19 +667,21 @@ function rankingNotice(box, text) { box.innerHTML = ''; box.appendChild(rkEl('di
 function renderRanking(items) {
   const box = document.getElementById('ranking-list'); if (!box) return;
   box.innerHTML = '';
-  if (!items?.length) { rankingNotice(box, 'ยังไม่มีเพลงในอันดับ — ค้นหาเพลงด้านบนแล้วเป็นคนแรกที่ส่งเลย! 🎵'); return; }
+  if (!items?.length) { rankingNotice(box, rankingTopicClosed() ? 'หัวข้อนี้ปิดโหวตแล้วและยังไม่มีเพลงในอันดับ' : 'ยังไม่มีเพลงในหัวข้อนี้ — ค้นหาเพลงด้านบนแล้วเป็นคนแรกที่ส่งเลย! 🎵'); return; }
   items.slice(0, 20).forEach(it => {
     const row = rkEl('div', 'rank-item' + (it.rank <= 3 ? ` top-${it.rank}` : ''));
     const img = rkEl('img', 'rank-cover'); img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
     img.src = rkSafeUrl(it.cover); img.onerror = () => img.classList.add('is-broken');
     const info = rkEl('div', 'rank-info');
-    info.append(rkEl('div', 'rank-title', it.title), rkEl('div', 'rank-artist', it.artist));
+    const artistEl = rkEl('div', 'rank-artist'); if (it.explicit) artistEl.appendChild(rkExplicitBadge()); artistEl.appendChild(document.createTextNode(it.artist || ''));
+    info.append(rkEl('div', 'rank-title', it.title), artistEl);
     const votes = rkEl('div', 'rank-votes'); votes.append(rkEl('strong', '', String(it.votes)), rkEl('span', '', 'โหวต'));
-    const btn = rkEl('button', 'rank-vote-btn', it.voted ? '✓ โหวตแล้ว' : '👍 โหวต');
-    btn.type = 'button'; btn.disabled = !!it.voted;
+    const closed = rankingTopicClosed();
+    const btn = rkEl('button', 'rank-vote-btn', it.voted ? '✓ โหวตแล้ว' : (closed ? '🔒 ปิดโหวต' : '👍 โหวต'));
+    btn.type = 'button'; btn.disabled = !!it.voted || closed;
     btn.onclick = (e) => {
       e.stopPropagation();
-      rankingSubmit({ trackId: it.trackId, title: it.title, artist: it.artist, durationMs: it.durationMs, cover: it.cover }, null);
+      rankingSubmit({ trackId: it.trackId, title: it.title, artist: it.artist, durationMs: it.durationMs, cover: it.cover, explicit: !!it.explicit }, null);
     };
     row.append(rkEl('div', 'rank-num', String(it.rank)), img, info, rkEl('div', 'rank-duration', it.duration || rkFmt(it.durationMs)), votes, btn);
     // เพลงที่ผู้ดูแลเพิ่มเอง (manual_) ไม่มีใน Spotify จึงกดเล่นไม่ได้
@@ -686,28 +694,99 @@ function renderRanking(items) {
 async function loadRanking(silent) {
   const box = document.getElementById('ranking-list'); if (!box) return;
   if (!RANKING_API) { rankingNotice(box, 'ยังไม่ได้ตั้งค่า Ranking API — ใส่ URL ของ Apps Script ที่ meta "ranking-api-url" ใน index.html'); return; }
+  if (!rankingTopic) { rankingNotice(box, rankingTopics.length ? 'เลือกหัวข้อด้านบนเพื่อดูอันดับ' : 'ยังไม่มีหัวข้อจัดอันดับ — รอผู้ดูแลสร้างหัวข้อ'); return; }
+  const topicId = rankingTopic.topicId;
   if (!silent && !box.children.length) rankingNotice(box, 'กำลังโหลด...');
   try {
-    const data = await rankingApi();
+    const data = await rankingApi(null, { action: 'list', topic: topicId });
     if (!data.ok) throw new Error(data.error || 'error');
+    if (rankingTopic?.topicId !== topicId) return; // ผู้ใช้สลับหัวข้อระหว่างรอ — ทิ้งผลเก่า
+    if (data.topic && data.topic.status !== rankingTopic.status) { rankingTopic = data.topic; renderTopicBar(); }
     renderRanking(data.items);
   } catch (e) {
     console.error('Ranking load error:', e);
+    if (e.message === 'topic_not_found') { rankingTopic = null; await loadRankingTopics(); if (rankingTopic) return loadRanking(true); rankingNotice(box, 'ยังไม่มีหัวข้อจัดอันดับ — รอผู้ดูแลสร้างหัวข้อ'); return; }
     if (!box.querySelector('.rank-item')) rankingNotice(box, 'โหลดอันดับไม่สำเร็จ ลองกดรีเฟรช');
   }
 }
 
+// ---------- หัวข้อจัดอันดับ ----------
+const rankingTopicClosed = () => rankingTopic?.status === 'closed';
+
+async function loadRankingTopics() {
+  if (!RANKING_API) return;
+  try {
+    const data = await rankingApi(null, { action: 'topics' });
+    if (!data.ok) throw new Error(data.error || 'error');
+    rankingTopics = data.topics || [];
+    const saved = localStorage.getItem(RANKING_TOPIC_KEY);
+    const byId = id => rankingTopics.find(t => t.topicId === id);
+    // ลำดับเลือก: หัวข้อที่ดูอยู่ > หัวข้อที่เคยเลือกไว้ > หัวข้อแรกที่เปิดโหวต > หัวข้อแรก
+    rankingTopic = byId(rankingTopic?.topicId) || byId(saved) || rankingTopics.find(t => t.status === 'open') || rankingTopics[0] || null;
+    renderTopicBar();
+  } catch (e) { console.error('Ranking topics error:', e); }
+}
+
+function ensureTopicBar() {
+  let bar = document.getElementById('ranking-topics'); if (bar) return bar;
+  const view = document.getElementById('view-ranking'); if (!view) return null;
+  bar = rkEl('div', 'rank-topics'); bar.id = 'ranking-topics';
+  bar.append(rkEl('div', 'rank-topic-chips'), rkEl('div', 'rank-topic-desc'));
+  const head = view.querySelector('.rank-header');
+  if (head) head.insertAdjacentElement('afterend', bar); else view.prepend(bar);
+  return bar;
+}
+
+function renderTopicBar() {
+  const bar = ensureTopicBar(); if (!bar) return;
+  const chips = bar.querySelector('.rank-topic-chips'), desc = bar.querySelector('.rank-topic-desc');
+  chips.innerHTML = '';
+  rankingTopics.forEach(t => {
+    const active = t.topicId === rankingTopic?.topicId;
+    const b = rkEl('button', 'rank-topic-chip' + (active ? ' active' : '') + (t.status === 'closed' ? ' closed' : ''), (t.status === 'closed' ? '🔒 ' : '') + t.title);
+    b.type = 'button'; b.onclick = () => selectRankingTopic(t.topicId);
+    chips.appendChild(b);
+  });
+  const note = rankingTopicClosed() ? 'หัวข้อนี้ปิดโหวตแล้ว' : '';
+  desc.textContent = !rankingTopics.length ? 'ยังไม่มีหัวข้อจัดอันดับ — รอผู้ดูแลสร้างหัวข้อ'
+    : [rankingTopic?.description, note].filter(Boolean).join(' · ');
+  desc.classList.toggle('hidden', !desc.textContent);
+  // ค้นหา/ส่งเพลงได้เฉพาะหัวข้อที่เปิดโหวต
+  const canSubmit = !!rankingTopic && !rankingTopicClosed();
+  document.querySelector('#view-ranking .rank-search')?.classList.toggle('hidden', !canSubmit);
+  if (!canSubmit) renderRankingSearch(null);
+}
+
+function selectRankingTopic(id) {
+  const t = rankingTopics.find(x => x.topicId === id);
+  if (!t || t.topicId === rankingTopic?.topicId) return;
+  rankingTopic = t;
+  try { localStorage.setItem(RANKING_TOPIC_KEY, id); } catch (e) {}
+  const input = document.getElementById('ranking-search-input'); if (input) input.value = '';
+  renderRankingSearch(null);
+  renderTopicBar();
+  const box = document.getElementById('ranking-list'); if (box) box.innerHTML = '';
+  loadRanking(false);
+}
+
+async function refreshRankingView(silent) {
+  await loadRankingTopics();
+  await loadRanking(silent);
+}
+
 async function rankingSubmit(song, customCover) {
   if (rankingBusy) return false;
+  if (!rankingTopic) { showToast('⚠️ กรุณาเลือกหัวข้อก่อน', 'warning'); return false; }
+  if (rankingTopicClosed()) { showToast('⚠️ หัวข้อนี้ปิดโหวตแล้ว', 'warning'); return false; }
   const token = localStorage.getItem('spotify_access_token');
   if (!token) { showToast('❌ กรุณาเข้าสู่ระบบใหม่', 'error'); return false; }
   rankingBusy = true;
   document.getElementById('view-ranking')?.classList.add('is-busy');
   try {
-    const data = await rankingApi({ action: 'submit', token, ...song, customCover: customCover || undefined });
+    const data = await rankingApi({ action: 'submit', token, topicId: rankingTopic.topicId, ...song, customCover: customCover || undefined });
     if (!data.ok) { showToast('❌ ' + (RK_ERRORS[data.error] || 'ส่งเพลงไม่สำเร็จ'), 'error'); return false; }
     if (data.already) showToast('ℹ️ คุณโหวตเพลงนี้ไปแล้ว', 'warning');
-    else if (data.created) showToast('🎉 ส่งเพลงเข้าอันดับแล้ว!', 'info');
+    else if (data.created) showToast('🎉 ส่งเพลงเข้าหัวข้อแล้ว!', 'info');
     else showToast(`✅ นับโหวตแล้ว (ตอนนี้ ${data.votes} โหวต)`, 'info');
     await loadRanking(true);
     return true;
@@ -731,7 +810,8 @@ function renderRankingSearch(results) {
     const row = rkEl('div', 'track-item');
     const img = rkEl('img'); img.alt = ''; img.src = track.album?.images?.[track.album.images.length > 1 ? 1 : 0]?.url || '';
     const info = rkEl('div', 'track-item-info');
-    info.append(rkEl('div', 'track-item-title', track.name), rkEl('div', 'track-item-artist', track.artists.map(a => a.name).join(', ')));
+    const trkArtist = rkEl('div', 'track-item-artist'); if (track.explicit) trkArtist.appendChild(rkExplicitBadge()); trkArtist.appendChild(document.createTextNode(track.artists.map(a => a.name).join(', ')));
+    info.append(rkEl('div', 'track-item-title', track.name), trkArtist);
     const btn = rkEl('button', 'rank-add-btn', '＋ ส่งเข้าอันดับ'); btn.type = 'button';
     btn.onclick = (e) => { e.stopPropagation(); openRankingModal(track); };
     row.append(img, info, rkEl('div', 'rank-duration', rkFmt(track.duration_ms)), btn);
@@ -741,13 +821,15 @@ function renderRankingSearch(results) {
 }
 
 function openRankingModal(track) {
+  if (!rankingTopic || rankingTopicClosed()) { showToast('⚠️ หัวข้อนี้ปิดโหวตแล้ว', 'warning'); return; }
   const imgs = track.album?.images || [];
   rankingPick = {
     trackId: track.id,
     title: track.name,
     artist: track.artists.map(a => a.name).join(', '),
     durationMs: track.duration_ms,
-    cover: imgs[1]?.url || imgs[0]?.url || ''
+    cover: imgs[1]?.url || imgs[0]?.url || '',
+    explicit: !!track.explicit
   };
   rankingCustomCover = null;
   document.getElementById('rk-cover-file').value = '';
@@ -774,7 +856,7 @@ function setupRanking() {
       } catch (e) { console.error('Ranking search error:', e); showToast('❌ ค้นหาเพลงไม่สำเร็จ', 'error'); }
     }, 400);
   });
-  document.getElementById('btn-ranking-refresh')?.addEventListener('click', () => loadRanking(false));
+  document.getElementById('btn-ranking-refresh')?.addEventListener('click', () => refreshRankingView(false));
 
   const modal = document.getElementById('ranking-modal');
   modal?.addEventListener('click', (e) => { if (e.target === modal) closeRankingModal(); });
@@ -811,9 +893,9 @@ function setupRanking() {
 }
 // เข้าหน้า Ranking = โหลดทันที + รีเฟรชอัตโนมัติทุก 30 วินาที / ออกจากหน้า = หยุด
 function startRankingView() {
-  loadRanking(false);
+  refreshRankingView(false);
   clearInterval(rankingTimer);
-  rankingTimer = setInterval(() => { if (document.visibilityState === 'visible') loadRanking(true); }, RANKING_REFRESH_MS);
+  rankingTimer = setInterval(() => { if (document.visibilityState === 'visible') refreshRankingView(true); }, RANKING_REFRESH_MS);
 }
 function stopRankingView() { clearInterval(rankingTimer); rankingTimer = null; }
 
