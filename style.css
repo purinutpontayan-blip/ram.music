@@ -530,6 +530,7 @@ am-lyrics {
   --am-lyrics-color-active: var(--text-main);
   --am-lyrics-color-inactive: rgba(255,255,255,0.4);
   text-align: left;
+  pointer-events: none; /* Lock lyrics from interaction */
 }
 
 /* Scrollbar */
