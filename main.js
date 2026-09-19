@@ -60,8 +60,8 @@ const getUserProfile = () => fetchWebApi('v1/me');
 const getRecentlyPlayed = () => fetchWebApi('v1/me/player/recently-played?limit=20');
 const searchSpotify = (q) => fetchWebApi(`v1/search?q=${encodeURIComponent(q)}&type=track,artist,album&limit=10`);
 const getArtist = (id) => fetchWebApi(`v1/artists/${id}`);
-const getArtistTopTracks = (id) => fetchWebApi(`v1/artists/${id}/top-tracks?market=from_token`);
-const getArtistAlbums = (id) => fetchWebApi(`v1/artists/${id}/albums?include_groups=album,single&market=from_token&limit=20`);
+const getArtistTopTracks = (id, market) => fetchWebApi(`v1/artists/${id}/top-tracks${market ? `?market=${market}` : ''}`);
+const getArtistAlbums = (id, market) => fetchWebApi(`v1/artists/${id}/albums?include_groups=album,single&limit=20${market ? `&market=${market}` : ''}`);
 
 // ============================================================
 // PLAYER
@@ -279,7 +279,7 @@ async function setupLyricsComponent(track) {
 // ============================================================
 // MAIN APP
 // ============================================================
-let accessToken = null, currentTrackData = null, currentContextTrack = null;
+let accessToken = null, currentTrackData = null, currentContextTrack = null, userMarket = null;
 
 async function init() {
   accessToken = await handleRedirect();
@@ -288,6 +288,7 @@ async function init() {
     document.getElementById('player-screen').classList.remove('hidden');
     const profile = await getUserProfile();
     if (profile) {
+      userMarket = profile.country || null;
       renderUserProfile(profile);
       if (profile.product !== 'premium') { showPremiumRequiredModal(); document.getElementById('player-screen').classList.add('hidden'); return; }
     }
@@ -340,8 +341,8 @@ async function handleArtistClick(artistId) {
     
     // Fetch these independently so if one fails, it doesn't break the whole page
     const [topTracks, albums] = await Promise.all([
-      getArtistTopTracks(artistId).catch(e => { console.error('Top tracks error:', e.message); return { tracks: [] }; }),
-      getArtistAlbums(artistId).catch(e => { console.error('Albums error:', e.message); return { items: [] }; })
+      getArtistTopTracks(artistId, userMarket).catch(e => { console.error('Top tracks error:', e.message); return { tracks: [] }; }),
+      getArtistAlbums(artistId, userMarket).catch(e => { console.error('Albums error:', e.message); return { items: [] }; })
     ]);
     
     renderArtistView(artist, topTracks, albums, playTrack);
