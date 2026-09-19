@@ -70,6 +70,8 @@ const getArtistTopTracks = async (id, artistName) => {
 };
 // The `market` param/field was also removed in that same update — omit it.
 const getArtistAlbums = (id) => fetchWebApi(`v1/artists/${id}/albums?include_groups=album,single&limit=20`);
+const getAlbum = (id) => fetchWebApi(`v1/albums/${id}`);
+const getAlbumTracks = (id) => fetchWebApi(`v1/albums/${id}/tracks?limit=50`);
 
 // ============================================================
 // PLAYER
@@ -150,15 +152,21 @@ function renderHistory(historyData, onPlay) {
     container.appendChild(div);
   });
 }
-function renderSearchResults(results, onPlay, onArtistClick) {
-  const container = document.getElementById('search-results'), artistsContainer = document.getElementById('search-artists');
-  container.innerHTML = ''; artistsContainer.innerHTML = '';
+function renderSearchResults(results, onPlay, onArtistClick, onAlbumClick) {
+  const container = document.getElementById('search-results'), artistsContainer = document.getElementById('search-artists'), albumsContainer = document.getElementById('search-albums');
+  container.innerHTML = ''; artistsContainer.innerHTML = ''; if (albumsContainer) albumsContainer.innerHTML = '';
   if (!results) return;
   results.artists?.items?.slice(0,5).forEach(artist => {
     const div = document.createElement('div'); div.className = 'artist-card playlist-card';
     const imgUrl = artist.images?.[0]?.url || '';
     div.innerHTML = `<img src="${imgUrl}" alt="${artist.name}" style="border-radius:50%"><div class="playlist-title" style="text-align:center;margin-top:10px">${artist.name}</div>`;
     div.onclick = () => onArtistClick(artist.id); artistsContainer.appendChild(div);
+  });
+  results.albums?.items?.slice(0,5).forEach(album => {
+    const div = document.createElement('div'); div.className = 'album-card playlist-card';
+    const imgUrl = album.images?.[0]?.url || '';
+    div.innerHTML = `<img src="${imgUrl}" alt="${album.name}"><div class="playlist-title">${album.name}</div><div class="playlist-owner">${album.artists?.map(a=>a.name).join(', ') || ''}</div>`;
+    div.onclick = () => onAlbumClick(album.id); albumsContainer?.appendChild(div);
   });
   results.tracks?.items?.forEach(track => {
     const div = document.createElement('div'); div.className = 'track-item';
@@ -168,7 +176,7 @@ function renderSearchResults(results, onPlay, onArtistClick) {
     container.appendChild(div);
   });
 }
-function renderArtistView(artist, topTracks, albums, onPlay) {
+function renderArtistView(artist, topTracks, albums, onPlay, onAlbumClick) {
   const header = document.getElementById('artist-header');
   const imgUrl = artist.images?.[0]?.url || '';
   const followersCount = artist.followers?.total ? artist.followers.total.toLocaleString() : '0';
@@ -185,7 +193,25 @@ function renderArtistView(artist, topTracks, albums, onPlay) {
   albums?.items?.forEach(album => {
     const div = document.createElement('div'); div.className = 'album-card playlist-card';
     div.innerHTML = `<img src="${album.images?.[0]?.url || ''}" alt="${album.name}"><div class="playlist-title">${album.name}</div><div class="playlist-owner">${new Date(album.release_date).getFullYear()} • ${album.album_type}</div>`;
+    div.onclick = () => onAlbumClick(album.id);
     albumsContainer.appendChild(div);
+  });
+}
+function renderAlbumView(album, tracksData, onPlay) {
+  const header = document.getElementById('album-header');
+  const imgUrl = album.images?.[0]?.url || '';
+  const year = album.release_date ? new Date(album.release_date).getFullYear() : '';
+  const artistNames = album.artists?.map(a=>a.name).join(', ') || '';
+  const totalTracks = album.total_tracks || tracksData?.items?.length || 0;
+  header.innerHTML = `<div style="display:flex;align-items:center;gap:20px;margin-bottom:30px"><img src="${imgUrl}" alt="${album.name}" style="width:150px;height:150px;border-radius:12px;object-fit:cover;box-shadow:0 8px 24px rgba(0,0,0,.5)"><div><h1 style="font-size:2.5rem;margin:0">${album.name}</h1><p style="color:var(--text-muted);margin-top:10px">${artistNames}${year ? ' • ' + year : ''} • ${totalTracks} เพลง</p></div></div>`;
+  const tracksContainer = document.getElementById('album-tracks'); tracksContainer.innerHTML = '';
+  (tracksData?.items || []).forEach((track, idx) => {
+    const div = document.createElement('div'); div.className = 'track-item';
+    const trackWithAlbum = { ...track, album };
+    div.innerHTML = `<img src="${imgUrl}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${idx + 1}. ${track.name}</div><div class="track-item-artist">${track.artists?.map(a=>a.name).join(', ')}</div></div>`;
+    div.onclick = () => onPlay(track.uri);
+    div.oncontextmenu = (e) => { e.preventDefault(); if (window.showTrackContextMenu) window.showTrackContextMenu(e, trackWithAlbum); };
+    tracksContainer.appendChild(div);
   });
 }
 function updatePlayerUI(state) {
@@ -318,8 +344,8 @@ function setupEventListeners() {
   document.getElementById('search-input').addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
     const query = e.target.value;
-    if (query.length > 2) searchTimeout = setTimeout(async () => { const results = await searchSpotify(query); renderSearchResults(results, playTrack, handleArtistClick); }, 500);
-    else renderSearchResults(null, null, null);
+    if (query.length > 2) searchTimeout = setTimeout(async () => { const results = await searchSpotify(query); renderSearchResults(results, playTrack, handleArtistClick, handleAlbumClick); }, 500);
+    else renderSearchResults(null, null, null, null);
   });
   document.getElementById('btn-play-pause').addEventListener('click', togglePlay);
   document.getElementById('btn-next').addEventListener('click', nextTrack);
@@ -354,11 +380,28 @@ async function handleArtistClick(artistId) {
       getArtistAlbums(artistId).catch(e => { console.error('Albums error:', e.message); return { items: [] }; })
     ]);
     
-    renderArtistView(artist, topTracks, albums, playTrack);
+    renderArtistView(artist, topTracks, albums, playTrack, handleAlbumClick);
   } catch (err) {
     console.error('Error fetching artist:', err);
     showToast('❌ ไม่สามารถโหลดข้อมูลศิลปินหลักได้', 'error');
     document.getElementById('artist-header').innerHTML = '<div style="color:red">เกิดข้อผิดพลาดในการโหลดข้อมูลศิลปิน</div>';
+  }
+}
+
+async function handleAlbumClick(albumId) {
+  try {
+    showView('view-album');
+    document.getElementById('album-header').innerHTML = 'กำลังโหลด...';
+    document.getElementById('album-tracks').innerHTML = '';
+
+    const album = await getAlbum(albumId);
+    const tracksData = await getAlbumTracks(albumId).catch(e => { console.error('Album tracks error:', e.message); return { items: [] }; });
+
+    renderAlbumView(album, tracksData, playTrack);
+  } catch (err) {
+    console.error('Error fetching album:', err);
+    showToast('❌ ไม่สามารถโหลดข้อมูลอัลบั้มได้', 'error');
+    document.getElementById('album-header').innerHTML = '<div style="color:red">เกิดข้อผิดพลาดในการโหลดข้อมูลอัลบั้ม</div>';
   }
 }
 
