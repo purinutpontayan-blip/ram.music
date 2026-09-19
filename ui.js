@@ -135,10 +135,7 @@ function updateAmbientColor(seedString) {
     document.documentElement.style.setProperty('--accent-glow', `${color}66`); // 66 is alpha
     
     // Also update lyrics background if open
-    const lyricsModal = document.getElementById('lyrics-modal');
-    if (!lyricsModal.classList.contains('hidden')) {
-        lyricsModal.style.background = `linear-gradient(to bottom, ${color}33, var(--bg-dark))`;
-    }
+    document.documentElement.style.setProperty('--modal-gradient', `linear-gradient(to bottom, ${color}33, transparent)`);
 }
 
 export function toggleLyricsModal() {
