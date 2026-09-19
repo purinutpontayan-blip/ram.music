@@ -216,20 +216,24 @@ function updateLyricsComponent(positionMs, durationMs, paused) {
             lyricsEl.setAttribute('current-time', currentPos);
             lyricsEl.currentTime = currentPos;
             
-            // Inject Thai clipping fix if not present yet
-            if (lyricsEl.shadowRoot && !lyricsEl.shadowRoot.getElementById('thai-clip-fix')) {
-                const style = document.createElement('style');
-                style.id = 'thai-clip-fix';
-                style.textContent = `
-                    span, .lyrics-line {
-                        padding-top: 0.3em !important;
-                        padding-bottom: 0.3em !important;
-                        margin-top: -0.3em !important;
-                        margin-bottom: -0.3em !important;
-                        line-height: 1.6 !important;
+            // Fix Thai combining characters being isolated by am-lyrics character splitting
+            if (lyricsEl.shadowRoot) {
+                const charSpans = lyricsEl.shadowRoot.querySelectorAll('.char:not(.thai-fixed)');
+                for (let i = 0; i < charSpans.length; i++) {
+                    const span = charSpans[i];
+                    span.classList.add('thai-fixed');
+                    if (span.textContent && /^[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]+$/.test(span.textContent)) {
+                        let prev = span.previousElementSibling;
+                        while (prev && !prev.classList.contains('char')) {
+                            prev = prev.previousElementSibling;
+                        }
+                        if (prev) {
+                            prev.textContent += span.textContent;
+                            span.textContent = '';
+                            span.style.display = 'none';
+                        }
                     }
-                `;
-                lyricsEl.shadowRoot.appendChild(style);
+                }
             }
         }, 100);
     }
