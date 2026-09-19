@@ -491,6 +491,26 @@ h2 {
   font-weight: 700;
   margin-bottom: 0.5rem;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* Marquee wrapper */
+.lyrics-track-title .marquee-inner {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* Only scroll if text overflows */
+.lyrics-track-title.is-overflow .marquee-inner {
+  animation: marquee-scroll 12s linear infinite;
+  padding-right: 3rem; /* gap between repeats */
+}
+
+@keyframes marquee-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
 .lyrics-track-artist {
