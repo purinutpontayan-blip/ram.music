@@ -23,7 +23,7 @@ async function loginWithSpotify() {
   const verifier = generateRandomString(128);
   const challenge = await generateCodeChallenge(verifier);
   localStorage.setItem('spotify_verifier', verifier);
-  const params = new URLSearchParams({ client_id: CLIENT_ID, response_type: 'code', redirect_uri: REDIRECT_URI, code_challenge_method: 'S256', code_challenge: challenge, scope: ['user-read-private','user-read-email','streaming','user-read-playback-state','user-modify-playback-state','user-library-read','playlist-read-private','playlist-read-collaborative','user-top-read','user-read-recently-played'].join(' ') });
+  const params = new URLSearchParams({ client_id: CLIENT_ID, response_type: 'code', redirect_uri: REDIRECT_URI, code_challenge_method: 'S256', code_challenge: challenge, scope: ['user-read-private','user-read-email','streaming','user-read-playback-state','user-modify-playback-state','user-library-read','user-library-modify','user-follow-read','user-follow-modify','playlist-read-private','playlist-read-collaborative','user-top-read','user-read-recently-played'].join(' ') });
   window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
 async function handleRedirect() {
@@ -72,6 +72,14 @@ const getArtistTopTracks = async (id, artistName) => {
 const getArtistAlbums = (id) => fetchWebApi(`v1/artists/${id}/albums?include_groups=album,single&limit=20`);
 const getAlbum = (id) => fetchWebApi(`v1/albums/${id}`);
 const getAlbumTracks = (id) => fetchWebApi(`v1/albums/${id}/tracks?limit=50`);
+// Spotify replaced the old /me/following endpoints with generic library endpoints (Feb 2026).
+// uris go in the query string, not the body.
+const checkFollowsArtist = async (artistId) => {
+  const data = await fetchWebApi(`v1/me/library/contains?uris=${encodeURIComponent(`spotify:artist:${artistId}`)}`);
+  return Array.isArray(data) ? !!data[0] : false;
+};
+const followArtist = (artistId) => fetchWebApi(`v1/me/library?uris=${encodeURIComponent(`spotify:artist:${artistId}`)}`, 'PUT');
+const unfollowArtist = (artistId) => fetchWebApi(`v1/me/library?uris=${encodeURIComponent(`spotify:artist:${artistId}`)}`, 'DELETE');
 
 // ============================================================
 // PLAYER
@@ -176,11 +184,13 @@ function renderSearchResults(results, onPlay, onArtistClick, onAlbumClick) {
     container.appendChild(div);
   });
 }
-function renderArtistView(artist, topTracks, albums, onPlay, onAlbumClick) {
+function renderArtistView(artist, topTracks, albums, onPlay, onAlbumClick, isFollowing, onToggleFollow) {
   const header = document.getElementById('artist-header');
   const imgUrl = artist.images?.[0]?.url || '';
   const followersCount = artist.followers?.total ? artist.followers.total.toLocaleString() : '0';
-  header.innerHTML = `<div style="display:flex;align-items:center;gap:20px;margin-bottom:30px"><img src="${imgUrl}" alt="${artist.name}" style="width:150px;height:150px;border-radius:50%;object-fit:cover;box-shadow:0 8px 24px rgba(0,0,0,.5)"><div><h1 style="font-size:3rem;margin:0">${artist.name}</h1><p style="color:var(--text-muted);margin-top:10px">${followersCount} followers</p></div></div>`;
+  header.innerHTML = `<div style="display:flex;align-items:center;gap:20px;margin-bottom:30px"><img src="${imgUrl}" alt="${artist.name}" style="width:150px;height:150px;border-radius:50%;object-fit:cover;box-shadow:0 8px 24px rgba(0,0,0,.5)"><div><h1 style="font-size:3rem;margin:0">${artist.name}</h1><p style="color:var(--text-muted);margin-top:10px">${followersCount} followers</p><button id="btn-follow-artist" class="btn-primary" style="margin-top:12px;padding:.6rem 1.5rem;font-size:.95rem;">${isFollowing ? '✓ กำลังติดตาม' : 'ติดตาม'}</button></div></div>`;
+  const followBtn = document.getElementById('btn-follow-artist');
+  if (followBtn && onToggleFollow) followBtn.onclick = onToggleFollow;
   const tracksContainer = document.getElementById('artist-top-tracks'); tracksContainer.innerHTML = '';
   topTracks?.tracks?.slice(0,5).forEach(track => {
     const div = document.createElement('div'); div.className = 'track-item';
@@ -375,12 +385,22 @@ async function handleArtistClick(artistId) {
     const artist = await getArtist(artistId);
     
     // Fetch these independently so if one fails, it doesn't break the whole page
-    const [topTracks, albums] = await Promise.all([
+    const [topTracks, albums, isFollowing] = await Promise.all([
       getArtistTopTracks(artistId, artist.name).catch(e => { console.error('Top tracks error:', e.message); return { tracks: [] }; }),
-      getArtistAlbums(artistId).catch(e => { console.error('Albums error:', e.message); return { items: [] }; })
+      getArtistAlbums(artistId).catch(e => { console.error('Albums error:', e.message); return { items: [] }; }),
+      checkFollowsArtist(artistId).catch(e => { console.error('Follow status error:', e.message); return false; })
     ]);
-    
-    renderArtistView(artist, topTracks, albums, playTrack, handleAlbumClick);
+
+    let isFollowingState = isFollowing;
+    const toggleFollow = async () => {
+      try {
+        if (isFollowingState) { await unfollowArtist(artistId); isFollowingState = false; showToast('เลิกติดตามแล้ว', 'info'); }
+        else { await followArtist(artistId); isFollowingState = true; showToast('✅ ติดตามแล้ว', 'info'); }
+        renderArtistView(artist, topTracks, albums, playTrack, handleAlbumClick, isFollowingState, toggleFollow);
+      } catch (e) { console.error('Toggle follow error:', e.message); showToast('❌ ไม่สามารถอัปเดตสถานะติดตามได้', 'error'); }
+    };
+
+    renderArtistView(artist, topTracks, albums, playTrack, handleAlbumClick, isFollowingState, toggleFollow);
   } catch (err) {
     console.error('Error fetching artist:', err);
     showToast('❌ ไม่สามารถโหลดข้อมูลศิลปินหลักได้', 'error');
