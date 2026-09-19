@@ -222,8 +222,19 @@ h2 {
   font-weight: 700;
 }
 
+h3 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.search-section {
+  margin-bottom: 2rem;
+}
+
 /* Lists and Grids */
-.playlists-grid {
+.playlists-grid, .history-grid, .artists-grid, .albums-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 1.5rem;
@@ -748,7 +759,7 @@ am-lyrics {
     padding: 1rem;
   }
 
-  .playlists-grid {
+  .playlists-grid, .history-grid, .artists-grid, .albums-grid {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
     gap: 1rem;
   }
