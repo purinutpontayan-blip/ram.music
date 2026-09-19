@@ -270,7 +270,6 @@ async function setupLyricsComponent(track) {
     // The library may be struggling with strict queries, so we let it use the song-title
     
     lyricsEl.setAttribute('autoscroll', 'true');
-    lyricsEl.setAttribute('interpolate', 'false'); // Fix Thai character splitting
     lyricsEl.setAttribute('font-family', "'Kanit', sans-serif");
     
     container.appendChild(lyricsEl);
