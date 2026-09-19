@@ -96,7 +96,13 @@ export function updatePlayerUI(state) {
 
     // Modal UI
     const modalArt = document.getElementById('lyrics-modal-art');
-    if (modalArt) modalArt.src = track.album.images[0]?.url;
+    if (modalArt) {
+        modalArt.crossOrigin = 'anonymous';
+        modalArt.src = track.album.images[0]?.url;
+        // Extract real dominant color from album art
+        modalArt.onload = () => extractAndApplyColor(modalArt);
+        if (modalArt.complete && modalArt.naturalWidth > 0) extractAndApplyColor(modalArt);
+    }
     
     const modalTitle = document.getElementById('lyrics-modal-title');
     if (modalTitle) {
@@ -144,19 +150,48 @@ export function updatePlayerUI(state) {
     updateAmbientColor(track.id);
 }
 
-function updateAmbientColor(seedString) {
-    // Simple hash to color
-    let hash = 0;
-    for (let i = 0; i < seedString.length; i++) {
-        hash = seedString.charCodeAt(i) + ((hash << 5) - hash);
+function extractAndApplyColor(imgEl) {
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 50;
+        canvas.height = 50;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(imgEl, 0, 0, 50, 50);
+        const data = ctx.getImageData(0, 0, 50, 50).data;
+
+        // Sample pixels and find the most vibrant/saturated color
+        let bestR = 30, bestG = 30, bestB = 30, bestSat = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i+1], b = data[i+2];
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            const sat = max === 0 ? 0 : (max - min) / max;
+            const lum = (max + min) / 510;
+            // Prefer vibrant (not too dark, not too bright, high saturation)
+            if (sat > bestSat && lum > 0.1 && lum < 0.9) {
+                bestSat = sat;
+                bestR = r; bestG = g; bestB = b;
+            }
+        }
+
+        const hex = '#' + [bestR, bestG, bestB].map(v => v.toString(16).padStart(2,'0')).join('');
+        document.documentElement.style.setProperty('--accent-glow', `rgba(${bestR},${bestG},${bestB},0.4)`);
+        document.documentElement.style.setProperty('--modal-bg-r', bestR);
+        document.documentElement.style.setProperty('--modal-bg-g', bestG);
+        document.documentElement.style.setProperty('--modal-bg-b', bestB);
+
+        // Apply animated layered gradient to lyrics modal
+        const modal = document.getElementById('lyrics-modal');
+        if (modal) {
+            modal.style.background = `
+                radial-gradient(ellipse at 20% 20%, rgba(${bestR},${bestG},${bestB},0.55) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 80%, rgba(${Math.round(bestR*0.6)},${Math.round(bestG*0.6)},${Math.round(bestB*1.4 > 255 ? 255 : bestB*1.4)},0.4) 0%, transparent 60%),
+                var(--bg-dark)
+            `;
+        }
+    } catch(e) {
+        // Cross-origin fallback - keep existing gradient
+        console.warn('Color extraction failed (CORS):', e);
     }
-    const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-    const color = '#' + ('00000'.substring(0, 6 - c.length) + c);
-    
-    document.documentElement.style.setProperty('--accent-glow', `${color}66`); // 66 is alpha
-    
-    // Also update lyrics background if open
-    document.documentElement.style.setProperty('--modal-gradient', `linear-gradient(to bottom, ${color}33, transparent)`);
 }
 
 export function toggleLyricsModal() {
