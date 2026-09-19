@@ -278,7 +278,7 @@ async function setupLyricsComponent(track) {
   function fixThaiSpans(root) {
     root.querySelectorAll('.char:not(.th-ok)').forEach(span => {
       span.classList.add('th-ok');
-      if (span.textContent && THAI_COMBINING.test(span.textContent)) { let prev = span.previousElementSibling; while (prev && (!prev.classList.contains('char') || prev.style.display==='none')) prev = prev.previousElementSibling; if (prev) { prev.textContent += span.textContent; span.textContent = ''; span.style.display = 'none'; } }
+      if (span.textContent && THAI_COMBINING.test(span.textContent)) { let prev = span.previousElementSibling; while (prev && (!prev.classList.contains('char') || prev.style.display==='none')) prev = prev.previousElementSibling; if (prev) { prev.textContent += span.textContent; span.textContent = ''; span.style.display = 'none'; prev.style.setProperty('width', 'auto', 'important'); prev.style.setProperty('min-width', 'auto', 'important'); prev.style.setProperty('max-width', 'none', 'important'); prev.style.setProperty('overflow', 'visible', 'important'); prev.style.setProperty('white-space', 'pre', 'important'); } }
     });
   }
   const waitForShadow = setInterval(() => { if (lyricsEl.shadowRoot) { clearInterval(waitForShadow); fixThaiSpans(lyricsEl.shadowRoot); new MutationObserver(()=>fixThaiSpans(lyricsEl.shadowRoot)).observe(lyricsEl.shadowRoot,{childList:true,subtree:true}); } }, 50);
