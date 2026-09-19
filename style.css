@@ -1492,3 +1492,196 @@ am-lyrics {
     padding: 1.5rem;
   }
 }
+
+/* ============================================================
+   RANKING — จัดอันดับเพลง
+   ============================================================ */
+.rank-header { margin-bottom: 1.25rem; }
+.rank-sub { color: var(--text-muted); font-size: .95rem; line-height: 1.5; margin-top: .25rem; }
+
+.rank-search {
+  border-radius: 100px;
+  padding: .75rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+}
+#ranking-search-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 1.05rem;
+  outline: none;
+  padding: .25rem 1rem;
+}
+#ranking-search-input::placeholder { color: var(--text-muted); }
+
+.rank-search-results { margin-bottom: 1.5rem; }
+.rank-search-results:empty { display: none; }
+
+.rank-add-btn,
+.rank-vote-btn,
+.rank-refresh {
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 999px;
+  white-space: nowrap;
+  transition: transform .2s, background-color .2s, opacity .2s;
+}
+.rank-add-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: .5rem 1rem;
+  font-size: .85rem;
+}
+.rank-add-btn:hover { background: #1ed760; transform: translateY(-1px); }
+
+.rank-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 1.5rem 0 .75rem;
+}
+.rank-list-head h3 { margin: 0; }
+.rank-refresh {
+  background: rgba(255, 255, 255, .08);
+  color: var(--text-main);
+  border: 1px solid var(--glass-border);
+  padding: .4rem 1rem;
+  font-size: .85rem;
+}
+.rank-refresh:hover { background: rgba(255, 255, 255, .16); }
+
+.rank-list { display: flex; flex-direction: column; gap: .5rem; }
+
+.rank-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: .75rem 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+  transition: background .25s, transform .25s;
+}
+.rank-item:hover { background: rgba(255, 255, 255, .08); transform: translateX(4px); }
+
+.rank-num {
+  width: 2.2rem;
+  text-align: center;
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.rank-item.top-1 { background: linear-gradient(90deg, rgba(255, 200, 60, .16), rgba(255, 255, 255, .03)); border-color: rgba(255, 200, 60, .35); }
+.rank-item.top-2 { background: linear-gradient(90deg, rgba(200, 210, 225, .13), rgba(255, 255, 255, .03)); border-color: rgba(200, 210, 225, .3); }
+.rank-item.top-3 { background: linear-gradient(90deg, rgba(210, 130, 70, .15), rgba(255, 255, 255, .03)); border-color: rgba(210, 130, 70, .3); }
+.rank-item.top-1 .rank-num { color: #ffc83c; font-size: 1.7rem; }
+.rank-item.top-2 .rank-num { color: #d0d8e6; }
+.rank-item.top-3 .rank-num { color: #d98a4e; }
+
+.rank-cover {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, .08);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .4);
+}
+.rank-cover.is-broken { visibility: hidden; }
+
+.rank-info { flex: 1; min-width: 0; }
+.rank-title, .rank-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rank-title { font-weight: 600; }
+.rank-artist { color: var(--text-muted); font-size: .9rem; }
+
+.rank-duration { color: var(--text-muted); font-size: .9rem; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+.rank-votes { display: flex; flex-direction: column; align-items: center; min-width: 3.2rem; flex-shrink: 0; line-height: 1.1; }
+.rank-votes strong { font-family: 'Outfit', sans-serif; font-size: 1.3rem; color: var(--accent); }
+.rank-votes span { font-size: .7rem; color: var(--text-muted); }
+
+.rank-vote-btn {
+  background: rgba(29, 185, 84, .15);
+  color: var(--accent);
+  border: 1px solid rgba(29, 185, 84, .4);
+  padding: .45rem .9rem;
+  font-size: .85rem;
+  flex-shrink: 0;
+}
+.rank-vote-btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.rank-vote-btn:disabled { opacity: .55; cursor: default; }
+.is-busy .rank-vote-btn,
+.is-busy .rank-add-btn { pointer-events: none; opacity: .6; }
+
+.rank-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2rem 1rem;
+  border: 1px dashed var(--glass-border);
+  border-radius: 14px;
+  line-height: 1.6;
+}
+
+/* Modal ส่งเพลงเข้าอันดับ */
+.rk-modal { gap: .75rem; overflow-y: auto; }
+.rk-preview { display: flex; align-items: center; gap: 1rem; margin: .5rem 0; }
+.rk-preview img {
+  width: 96px;
+  height: 96px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, .08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+}
+.rk-preview-info { min-width: 0; }
+.rk-title { font-weight: 700; font-size: 1.1rem; }
+.rk-artist { color: var(--text-muted); margin-top: .15rem; }
+.rk-duration { color: var(--accent); font-size: .9rem; margin-top: .4rem; }
+.rk-file {
+  display: block;
+  padding: .75rem 1rem;
+  border: 1px dashed var(--glass-border);
+  border-radius: 12px;
+  color: var(--text-muted);
+  font-size: .9rem;
+  cursor: pointer;
+  text-align: center;
+  transition: background .2s, color .2s;
+}
+.rk-file:hover { background: rgba(255, 255, 255, .06); color: var(--text-main); }
+.rk-file input { display: none; }
+.rk-hint { color: var(--text-muted); font-size: .8rem; line-height: 1.4; }
+.rk-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: .85rem;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+}
+.rk-actions { display: flex; gap: .75rem; margin-top: .5rem; }
+.rk-actions .btn-close-playlist { flex: 1; font-family: inherit; }
+.rk-actions .btn-primary { flex: 2; padding: .75rem 1.25rem; font-size: 1rem; }
+.rk-actions .btn-primary:disabled { opacity: .6; cursor: default; transform: none; }
+
+@media (max-width:768px) {
+  .rank-item { gap: .6rem; padding: .6rem .7rem; }
+  .rank-num { width: 1.6rem; font-size: 1.15rem; }
+  .rank-item.top-1 .rank-num { font-size: 1.3rem; }
+  .rank-cover { width: 44px; height: 44px; }
+  .rank-duration { display: none; }
+  .rank-vote-btn { padding: .4rem .65rem; font-size: .78rem; }
+  .rank-add-btn { padding: .45rem .75rem; font-size: .78rem; }
+  .rank-search-results .rank-duration { display: none; }
+}
