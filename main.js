@@ -77,7 +77,10 @@ async function fetchWebApi(endpoint, method = 'GET', body) {
   if (res.status === 401) { localStorage.removeItem('spotify_access_token'); window.location.reload(); }
   if (!res.ok) { const err = new Error(`API error: ${res.status}`); err.status = res.status; throw err; }
   if (res.status === 204) return null;
-  return await res.json();
+  // บาง endpoint (เช่น PUT /me/library) ตอบ 200 แต่ body ว่าง — ห้าม res.json() ตรงๆ ไม่งั้นจะ throw ทั้งที่สำเร็จแล้ว
+  const text = await res.text();
+  if (!text) return null;
+  try { return JSON.parse(text); } catch (e) { return null; }
 }
 const getUserProfile = () => fetchWebApi('v1/me');
 const getRecentlyPlayed = () => fetchWebApi('v1/me/player/recently-played?limit=20');
@@ -316,8 +319,13 @@ function renderSearchResults(results, onPlay, onArtistClick, onAlbumClick) {
 function renderArtistView(artist, topTracks, albums, onPlay, onAlbumClick, isFollowing, onToggleFollow) {
   const header = document.getElementById('artist-header');
   const imgUrl = artist.images?.[0]?.url || '';
-  const followersCount = artist.followers?.total ? artist.followers.total.toLocaleString() : '0';
-  header.innerHTML = `<div style="display:flex;align-items:center;gap:20px;margin-bottom:30px"><img src="${imgUrl}" alt="${artist.name}" style="width:150px;height:150px;border-radius:50%;object-fit:cover;box-shadow:0 8px 24px rgba(0,0,0,.5)"><div><h1 style="font-size:3rem;margin:0">${artist.name}</h1><p style="color:var(--text-muted);margin-top:10px">${followersCount} followers</p><button id="btn-follow-artist" class="btn-primary" style="margin-top:12px;padding:.6rem 1.5rem;font-size:.95rem;">${isFollowing ? '✓ กำลังติดตาม' : 'ติดตาม'}</button></div></div>`;
+  // Spotify ถอดฟิลด์ followers ออกจาก Artist object ใน Dev Mode (Feb 2026) จึงไม่มีตัวเลขให้แสดง
+  // แสดงเฉพาะเมื่อมีค่าจริง (ไม่โชว์ "0 followers" ที่ทำให้เข้าใจผิด) ถ้าไม่มีให้แสดงแนวเพลงแทน
+  const followersTotal = artist.followers?.total;
+  const genresText = (artist.genres || []).slice(0, 3).join(' • ');
+  const subtitle = typeof followersTotal === 'number' ? `${followersTotal.toLocaleString()} followers` : genresText;
+  const subtitleHtml = subtitle ? `<p style="color:var(--text-muted);margin-top:10px">${subtitle}</p>` : '';
+  header.innerHTML = `<div style="display:flex;align-items:center;gap:20px;margin-bottom:30px"><img src="${imgUrl}" alt="${artist.name}" style="width:150px;height:150px;border-radius:50%;object-fit:cover;box-shadow:0 8px 24px rgba(0,0,0,.5)"><div><h1 style="font-size:3rem;margin:0">${artist.name}</h1>${subtitleHtml}<button id="btn-follow-artist" class="btn-primary" style="margin-top:12px;padding:.6rem 1.5rem;font-size:.95rem;">${isFollowing ? '✓ กำลังติดตาม' : 'ติดตาม'}</button></div></div>`;
   const followBtn = document.getElementById('btn-follow-artist');
   if (followBtn && onToggleFollow) followBtn.onclick = onToggleFollow;
   const tracksContainer = document.getElementById('artist-top-tracks'); tracksContainer.innerHTML = '';
