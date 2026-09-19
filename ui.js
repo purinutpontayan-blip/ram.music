@@ -35,41 +35,30 @@ export function renderUserProfile(profile) {
     `;
 }
 
-export function renderPlaylists(playlistsData, onPlay) {
-    const container = document.getElementById('playlists-grid');
+export function renderHistory(historyData, onPlayTrack) {
+    const container = document.getElementById('history-grid');
     container.innerHTML = '';
 
-    if (!playlistsData || !playlistsData.playlists || !playlistsData.playlists.items) return;
+    if (!historyData || !historyData.items) return;
 
-    playlistsData.playlists.items.forEach(playlist => {
-        if (!playlist) return;
+    // Remove duplicates from history
+    const uniqueTracks = [];
+    const uris = new Set();
+    for (const item of historyData.items) {
+        if (!uris.has(item.track.uri)) {
+            uris.add(item.track.uri);
+            uniqueTracks.push(item.track);
+        }
+    }
+
+    uniqueTracks.slice(0, 12).forEach(track => {
+        if (!track) return;
         const div = document.createElement('div');
-        div.className = 'playlist-card';
-        div.innerHTML = `
-            <img src="${playlist.images[0]?.url}" alt="${playlist.name}">
-            <div class="playlist-title">${playlist.name}</div>
-            <div class="playlist-owner">${playlist.owner.display_name}</div>
-        `;
-        div.onclick = () => onPlay(playlist.uri); // Simplification: playing playlist directly might need different API call depending on device, but uris: [uri] works for context_uri usually, let's keep it simple for now. Wait, context_uri is for playlists, uris is for tracks. Let's just alert for now or implement playContext later.
-        container.appendChild(div);
-    });
-}
-
-export function renderSearchResults(results, onPlayTrack) {
-    const container = document.getElementById('search-results');
-    container.innerHTML = '';
-
-    if (!results || !results.tracks || !results.tracks.items) return;
-
-    results.tracks.items.forEach(track => {
-        const div = document.createElement('div');
-        div.className = 'track-item';
+        div.className = 'history-card playlist-card';
         div.innerHTML = `
             <img src="${track.album.images[0]?.url}" alt="${track.name}">
-            <div class="track-item-info">
-                <div class="track-item-title">${track.name}</div>
-                <div class="track-item-artist">${track.artists.map(a => a.name).join(', ')}</div>
-            </div>
+            <div class="playlist-title">${track.name}</div>
+            <div class="playlist-owner">${track.artists.map(a => a.name).join(', ')}</div>
         `;
         div.onclick = () => onPlayTrack(track.uri);
         div.oncontextmenu = (e) => {
@@ -80,6 +69,114 @@ export function renderSearchResults(results, onPlayTrack) {
         };
         container.appendChild(div);
     });
+}
+
+export function renderSearchResults(results, onPlayTrack, onArtistClick) {
+    const container = document.getElementById('search-results');
+    const artistsContainer = document.getElementById('search-artists');
+    container.innerHTML = '';
+    artistsContainer.innerHTML = '';
+
+    if (!results) return;
+
+    if (results.artists && results.artists.items) {
+        results.artists.items.slice(0, 5).forEach(artist => {
+            const div = document.createElement('div');
+            div.className = 'artist-card playlist-card';
+            const imgUrl = artist.images && artist.images[0] ? artist.images[0].url : 'https://i.scdn.co/image/ab6761610000e5eb55d39ab9c21d506aa52f7021';
+            div.innerHTML = `
+                <img src="${imgUrl}" alt="${artist.name}" style="border-radius: 50%;">
+                <div class="playlist-title" style="text-align: center; margin-top: 10px;">${artist.name}</div>
+            `;
+            div.onclick = () => onArtistClick(artist.id);
+            artistsContainer.appendChild(div);
+        });
+    }
+
+    if (results.tracks && results.tracks.items) {
+        results.tracks.items.forEach(track => {
+            const div = document.createElement('div');
+            div.className = 'track-item';
+            div.innerHTML = `
+                <img src="${track.album.images[0]?.url}" alt="${track.name}">
+                <div class="track-item-info">
+                    <div class="track-item-title">${track.name}</div>
+                    <div class="track-item-artist">${track.artists.map(a => a.name).join(', ')}</div>
+                </div>
+            `;
+            div.onclick = () => onPlayTrack(track.uri);
+            div.oncontextmenu = (e) => {
+                e.preventDefault();
+                if (window.showTrackContextMenu) {
+                    window.showTrackContextMenu(e, track);
+                }
+            };
+            container.appendChild(div);
+        });
+    }
+}
+
+export function renderArtistView(artist, topTracks, albums, onPlayTrack) {
+    const header = document.getElementById('artist-header');
+    const imgUrl = artist.images && artist.images[0] ? artist.images[0].url : 'https://i.scdn.co/image/ab6761610000e5eb55d39ab9c21d506aa52f7021';
+    header.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 30px;">
+            <img src="${imgUrl}" alt="${artist.name}" style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
+            <div>
+                <h1 style="font-size: 3rem; margin: 0;">${artist.name}</h1>
+                <p style="color: var(--text-secondary); margin-top: 10px;">${artist.followers.total.toLocaleString()} followers</p>
+            </div>
+        </div>
+    `;
+
+    const tracksContainer = document.getElementById('artist-top-tracks');
+    tracksContainer.innerHTML = '';
+    if (topTracks && topTracks.tracks) {
+        topTracks.tracks.slice(0, 5).forEach(track => {
+            const div = document.createElement('div');
+            div.className = 'track-item';
+            div.innerHTML = `
+                <img src="${track.album.images[0]?.url}" alt="${track.name}">
+                <div class="track-item-info">
+                    <div class="track-item-title">${track.name}</div>
+                    <div class="track-item-artist">${track.artists.map(a => a.name).join(', ')}</div>
+                </div>
+            `;
+            div.onclick = () => onPlayTrack(track.uri);
+            div.oncontextmenu = (e) => {
+                e.preventDefault();
+                if (window.showTrackContextMenu) {
+                    window.showTrackContextMenu(e, track);
+                }
+            };
+            tracksContainer.appendChild(div);
+        });
+    }
+
+    const albumsContainer = document.getElementById('artist-albums');
+    albumsContainer.innerHTML = '';
+    if (albums && albums.items) {
+        albums.items.forEach(album => {
+            const div = document.createElement('div');
+            div.className = 'album-card playlist-card';
+            div.innerHTML = `
+                <img src="${album.images[0]?.url}" alt="${album.name}">
+                <div class="playlist-title">${album.name}</div>
+                <div class="playlist-owner">${new Date(album.release_date).getFullYear()} • ${album.album_type}</div>
+            `;
+            // Simplified album play (can trigger play context if implemented)
+            div.onclick = () => {
+                // If we want to play album, we can call playTrack(album.uri) but context uri is needed.
+                // We'll just alert for now or implement play context.
+                if (window.playContext) {
+                    window.playContext(album.uri);
+                } else {
+                    alert("Playing albums not fully implemented yet.");
+                }
+            };
+            albumsContainer.appendChild(div);
+        });
+    }
 }
 
 export function updatePlayerUI(state) {
