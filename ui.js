@@ -145,9 +145,57 @@ export function updatePlayerUI(state) {
         if (modalIconPause) modalIconPause.classList.remove('hidden');
     }
 
-    // Extract dominant color for ambient bg (Simulated for now, a real implementation would use color-thief or similar)
-    // We'll just change the gradient randomly or based on track ID hash for effect
-    updateAmbientColor(track.id);
+    // Color applied via modalArt.onload -> extractAndApplyColor
+}
+
+function hslToRgb(h, s, l) {
+    s /= 100; l /= 100;
+    const k = n => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [Math.round(f(0)*255), Math.round(f(8)*255), Math.round(f(4)*255)];
+}
+
+function rgbToHue(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0;
+    if (max !== min) {
+        const d = max - min;
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+    }
+    return Math.round(h * 360);
+}
+
+function applyColorToModal(r, g, b) {
+    document.documentElement.style.setProperty('--accent-glow', `rgba(${r},${g},${b},0.4)`);
+    const modal = document.getElementById('lyrics-modal');
+    if (!modal) return;
+
+    // Derive a second contrasting hue
+    const [r2, g2, b2] = hslToRgb(((rgbToHue(r,g,b) + 150) % 360), 65, 40);
+
+    // Set CSS vars for animations
+    modal.style.setProperty('--blob1', `rgba(${r},${g},${b},0.6)`);
+    modal.style.setProperty('--blob2', `rgba(${r2},${g2},${b2},0.5)`);
+    modal.style.setProperty('--blob3', `rgba(${Math.round(r*0.5)},${Math.round(g*0.7)},${Math.round(b*0.5)},0.35)`);
+    modal.style.backgroundColor = 'var(--bg-dark)';
+    modal.style.backgroundImage = '';
+
+    // Ensure blob layer exists
+    let blobLayer = modal.querySelector('.modal-blobs');
+    if (!blobLayer) {
+        blobLayer = document.createElement('div');
+        blobLayer.className = 'modal-blobs';
+        blobLayer.innerHTML = `
+            <div class="blob blob-1"></div>
+            <div class="blob blob-2"></div>
+            <div class="blob blob-3"></div>
+        `;
+        modal.insertBefore(blobLayer, modal.firstChild);
+    }
 }
 
 function extractAndApplyColor(imgEl) {
@@ -159,42 +207,42 @@ function extractAndApplyColor(imgEl) {
         ctx.drawImage(imgEl, 0, 0, 50, 50);
         const data = ctx.getImageData(0, 0, 50, 50).data;
 
-        // Sample pixels and find the most vibrant/saturated color
         let bestR = 30, bestG = 30, bestB = 30, bestSat = 0;
         for (let i = 0; i < data.length; i += 4) {
             const r = data[i], g = data[i+1], b = data[i+2];
             const max = Math.max(r, g, b), min = Math.min(r, g, b);
             const sat = max === 0 ? 0 : (max - min) / max;
             const lum = (max + min) / 510;
-            // Prefer vibrant (not too dark, not too bright, high saturation)
             if (sat > bestSat && lum > 0.1 && lum < 0.9) {
                 bestSat = sat;
                 bestR = r; bestG = g; bestB = b;
             }
         }
-
-        const hex = '#' + [bestR, bestG, bestB].map(v => v.toString(16).padStart(2,'0')).join('');
-        document.documentElement.style.setProperty('--accent-glow', `rgba(${bestR},${bestG},${bestB},0.4)`);
-        document.documentElement.style.setProperty('--modal-bg-r', bestR);
-        document.documentElement.style.setProperty('--modal-bg-g', bestG);
-        document.documentElement.style.setProperty('--modal-bg-b', bestB);
-
-        // Apply animated layered gradient to lyrics modal
-        const modal = document.getElementById('lyrics-modal');
-        if (modal) {
-            modal.style.background = `
-                radial-gradient(ellipse at 20% 20%, rgba(${bestR},${bestG},${bestB},0.55) 0%, transparent 60%),
-                radial-gradient(ellipse at 80% 80%, rgba(${Math.round(bestR*0.6)},${Math.round(bestG*0.6)},${Math.round(bestB*1.4 > 255 ? 255 : bestB*1.4)},0.4) 0%, transparent 60%),
-                var(--bg-dark)
-            `;
-        }
+        applyColorToModal(bestR, bestG, bestB);
     } catch(e) {
-        // Cross-origin fallback - keep existing gradient
-        console.warn('Color extraction failed (CORS):', e);
+        console.warn('Color extraction failed (CORS), using fallback palette');
+        // Fallback: derive a pleasant color from the image src URL hash
+        const src = imgEl.src || '';
+        let hash = 0;
+        for (let i = 0; i < src.length; i++) hash = src.charCodeAt(i) + ((hash << 5) - hash);
+        const hue = Math.abs(hash) % 360;
+        const [r, g, b] = hslToRgb(hue, 65, 45);
+        applyColorToModal(r, g, b);
     }
 }
 
 export function toggleLyricsModal() {
     const modal = document.getElementById('lyrics-modal');
+    const isHidden = modal.classList.contains('hidden');
+    
+    // If closing while in fullscreen, exit fullscreen first
+    if (!isHidden && document.fullscreenElement) {
+        document.exitFullscreen().then(() => {
+            modal.classList.add('hidden');
+        }).catch(() => {
+            modal.classList.add('hidden');
+        });
+        return;
+    }
     modal.classList.toggle('hidden');
 }
