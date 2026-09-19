@@ -411,7 +411,8 @@ h2 {
   left: 0;
   width: 100%;
   height: 100%;
-  background: var(--bg-dark); /* Will be overridden by album art color dynamically if possible */
+  background-color: var(--bg-dark);
+  background-image: var(--modal-gradient);
   z-index: 50; /* Higher than player */
   display: flex;
   flex-direction: column;
