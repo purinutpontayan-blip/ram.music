@@ -233,6 +233,7 @@ function showView(viewId) {
   document.getElementById(viewId).classList.add('active');
   document.getElementById('search-bar-container').classList.toggle('hidden', viewId !== 'view-search');
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.target === viewId.replace('view-', '')));
+  if (viewId === 'view-ranking') startRankingView(); else stopRankingView();
 }
 function renderUserProfile(profile) {
   const container = document.getElementById('user-profile');
@@ -620,9 +621,206 @@ function setupWakeLock() {
 }
 
 // ============================================================
+// RANKING — จัดอันดับเพลง (Google Sheet + Apps Script)
+// ============================================================
+// URL ของ Apps Script Web App อ่านจาก <meta name="ranking-api-url"> ใน index.html
+const RANKING_API = (document.querySelector('meta[name="ranking-api-url"]')?.content || '').trim();
+const RANKING_MAX_COVER = 1.5 * 1024 * 1024; // ต้องตรงกับ MAX_COVER_BYTES ใน Code.gs
+const RANKING_REFRESH_MS = 30000;
+let rankingTimer = null, rankingPick = null, rankingCustomCover = null, rankingBusy = false;
+
+const rkFmt = ms => { const s = Math.round((ms || 0) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const rkSafeUrl = u => (/^https:\/\//i.test(u || '') ? u : '');
+const rkEl = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const RK_ERRORS = {
+  unauthorized: 'เซสชันหมดอายุ กรุณาออกจากระบบแล้วเข้าใหม่',
+  invalid_song: 'ข้อมูลเพลงไม่ถูกต้อง',
+  invalid_cover: 'รูปปกไม่ถูกต้อง (ต้องเป็น PNG / JPG / GIF)',
+  cover_too_large: 'รูปปกใหญ่เกิน 1.5MB',
+  cover_type: 'ไฟล์รูปต้องเป็น PNG, JPG หรือ GIF เท่านั้น',
+  busy: 'ระบบกำลังยุ่ง ลองใหม่อีกครั้ง'
+};
+
+// GET (ไม่ส่ง payload) = ดึงอันดับ, POST = ส่งเพลง/โหวต
+// ใช้ Content-Type: text/plain เพื่อไม่ให้เกิด CORS preflight (Apps Script ไม่รองรับ OPTIONS)
+async function rankingApi(payload) {
+  if (!RANKING_API) throw new Error('no_api');
+  let res;
+  if (payload) {
+    res = await fetch(RANKING_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+  } else {
+    const q = new URLSearchParams({ action: 'list', user: currentUser?.id || '', _: Date.now() });
+    res = await fetch(`${RANKING_API}?${q}`);
+  }
+  if (!res.ok) throw new Error('http_' + res.status);
+  return res.json();
+}
+
+function rankingNotice(box, text) { box.innerHTML = ''; box.appendChild(rkEl('div', 'rank-empty', text)); }
+
+function renderRanking(items) {
+  const box = document.getElementById('ranking-list'); if (!box) return;
+  box.innerHTML = '';
+  if (!items?.length) { rankingNotice(box, 'ยังไม่มีเพลงในอันดับ — ค้นหาเพลงด้านบนแล้วเป็นคนแรกที่ส่งเลย! 🎵'); return; }
+  items.slice(0, 20).forEach(it => {
+    const row = rkEl('div', 'rank-item' + (it.rank <= 3 ? ` top-${it.rank}` : ''));
+    const img = rkEl('img', 'rank-cover'); img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+    img.src = rkSafeUrl(it.cover); img.onerror = () => img.classList.add('is-broken');
+    const info = rkEl('div', 'rank-info');
+    info.append(rkEl('div', 'rank-title', it.title), rkEl('div', 'rank-artist', it.artist));
+    const votes = rkEl('div', 'rank-votes'); votes.append(rkEl('strong', '', String(it.votes)), rkEl('span', '', 'โหวต'));
+    const btn = rkEl('button', 'rank-vote-btn', it.voted ? '✓ โหวตแล้ว' : '👍 โหวต');
+    btn.type = 'button'; btn.disabled = !!it.voted;
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      rankingSubmit({ trackId: it.trackId, title: it.title, artist: it.artist, durationMs: it.durationMs, cover: it.cover }, null);
+    };
+    row.append(rkEl('div', 'rank-num', String(it.rank)), img, info, rkEl('div', 'rank-duration', it.duration || rkFmt(it.durationMs)), votes, btn);
+    // เพลงที่ผู้ดูแลเพิ่มเอง (manual_) ไม่มีใน Spotify จึงกดเล่นไม่ได้
+    if (!String(it.trackId).startsWith('manual_')) row.onclick = () => playTrack(`spotify:track:${it.trackId}`);
+    else row.style.cursor = 'default';
+    box.appendChild(row);
+  });
+}
+
+async function loadRanking(silent) {
+  const box = document.getElementById('ranking-list'); if (!box) return;
+  if (!RANKING_API) { rankingNotice(box, 'ยังไม่ได้ตั้งค่า Ranking API — ใส่ URL ของ Apps Script ที่ meta "ranking-api-url" ใน index.html'); return; }
+  if (!silent && !box.children.length) rankingNotice(box, 'กำลังโหลด...');
+  try {
+    const data = await rankingApi();
+    if (!data.ok) throw new Error(data.error || 'error');
+    renderRanking(data.items);
+  } catch (e) {
+    console.error('Ranking load error:', e);
+    if (!box.querySelector('.rank-item')) rankingNotice(box, 'โหลดอันดับไม่สำเร็จ ลองกดรีเฟรช');
+  }
+}
+
+async function rankingSubmit(song, customCover) {
+  if (rankingBusy) return false;
+  const token = localStorage.getItem('spotify_access_token');
+  if (!token) { showToast('❌ กรุณาเข้าสู่ระบบใหม่', 'error'); return false; }
+  rankingBusy = true;
+  document.getElementById('view-ranking')?.classList.add('is-busy');
+  try {
+    const data = await rankingApi({ action: 'submit', token, ...song, customCover: customCover || undefined });
+    if (!data.ok) { showToast('❌ ' + (RK_ERRORS[data.error] || 'ส่งเพลงไม่สำเร็จ'), 'error'); return false; }
+    if (data.already) showToast('ℹ️ คุณโหวตเพลงนี้ไปแล้ว', 'warning');
+    else if (data.created) showToast('🎉 ส่งเพลงเข้าอันดับแล้ว!', 'info');
+    else showToast(`✅ นับโหวตแล้ว (ตอนนี้ ${data.votes} โหวต)`, 'info');
+    await loadRanking(true);
+    return true;
+  } catch (e) {
+    console.error('Ranking submit error:', e);
+    showToast('❌ เชื่อมต่อระบบจัดอันดับไม่ได้', 'error');
+    return false;
+  } finally {
+    rankingBusy = false;
+    document.getElementById('view-ranking')?.classList.remove('is-busy');
+  }
+}
+
+function renderRankingSearch(results) {
+  const box = document.getElementById('ranking-search-results'); if (!box) return;
+  box.innerHTML = '';
+  if (!results) return;
+  const tracks = results.tracks?.items || [];
+  if (!tracks.length) { box.appendChild(rkEl('div', 'rank-empty', 'ไม่พบเพลงที่ค้นหา')); return; }
+  tracks.forEach(track => {
+    const row = rkEl('div', 'track-item');
+    const img = rkEl('img'); img.alt = ''; img.src = track.album?.images?.[track.album.images.length > 1 ? 1 : 0]?.url || '';
+    const info = rkEl('div', 'track-item-info');
+    info.append(rkEl('div', 'track-item-title', track.name), rkEl('div', 'track-item-artist', track.artists.map(a => a.name).join(', ')));
+    const btn = rkEl('button', 'rank-add-btn', '＋ ส่งเข้าอันดับ'); btn.type = 'button';
+    btn.onclick = (e) => { e.stopPropagation(); openRankingModal(track); };
+    row.append(img, info, rkEl('div', 'rank-duration', rkFmt(track.duration_ms)), btn);
+    row.onclick = () => playTrack(track.uri);
+    box.appendChild(row);
+  });
+}
+
+function openRankingModal(track) {
+  const imgs = track.album?.images || [];
+  rankingPick = {
+    trackId: track.id,
+    title: track.name,
+    artist: track.artists.map(a => a.name).join(', '),
+    durationMs: track.duration_ms,
+    cover: imgs[1]?.url || imgs[0]?.url || ''
+  };
+  rankingCustomCover = null;
+  document.getElementById('rk-cover-file').value = '';
+  document.getElementById('rk-cover-reset').classList.add('hidden');
+  document.getElementById('rk-cover-preview').src = rankingPick.cover;
+  document.getElementById('rk-title').textContent = rankingPick.title;
+  document.getElementById('rk-artist').textContent = rankingPick.artist;
+  document.getElementById('rk-duration').textContent = `ระยะเวลา ${rkFmt(rankingPick.durationMs)}`;
+  document.getElementById('ranking-modal').classList.remove('hidden');
+}
+function closeRankingModal() { document.getElementById('ranking-modal')?.classList.add('hidden'); rankingPick = null; rankingCustomCover = null; }
+
+function setupRanking() {
+  const input = document.getElementById('ranking-search-input');
+  let timer;
+  input?.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2) { renderRankingSearch(null); return; }
+    timer = setTimeout(async () => {
+      try {
+        const r = await fetchWebApi(`v1/search?q=${encodeURIComponent(q)}&type=track&limit=8`);
+        if (input.value.trim() === q) renderRankingSearch(r); // กันผลค้นหาเก่าทับผลใหม่
+      } catch (e) { console.error('Ranking search error:', e); showToast('❌ ค้นหาเพลงไม่สำเร็จ', 'error'); }
+    }, 400);
+  });
+  document.getElementById('btn-ranking-refresh')?.addEventListener('click', () => loadRanking(false));
+
+  const modal = document.getElementById('ranking-modal');
+  modal?.addEventListener('click', (e) => { if (e.target === modal) closeRankingModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRankingModal(); });
+  document.getElementById('rk-cancel')?.addEventListener('click', closeRankingModal);
+
+  const fileInput = document.getElementById('rk-cover-file'), preview = document.getElementById('rk-cover-preview'), resetBtn = document.getElementById('rk-cover-reset');
+  fileInput?.addEventListener('change', () => {
+    const f = fileInput.files?.[0]; if (!f) return;
+    if (!['image/png', 'image/jpeg', 'image/gif'].includes(f.type)) { showToast('⚠️ รองรับเฉพาะ PNG / JPG / GIF', 'warning'); fileInput.value = ''; return; }
+    if (f.size > RANKING_MAX_COVER) { showToast('⚠️ ไฟล์ใหญ่เกิน 1.5MB', 'warning'); fileInput.value = ''; return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      rankingCustomCover = { mime: f.type, name: f.name, data: dataUrl.split(',')[1] };
+      preview.src = dataUrl; resetBtn.classList.remove('hidden');
+    };
+    reader.readAsDataURL(f);
+  });
+  resetBtn?.addEventListener('click', () => {
+    rankingCustomCover = null; fileInput.value = '';
+    if (rankingPick) preview.src = rankingPick.cover;
+    resetBtn.classList.add('hidden');
+  });
+
+  const submitBtn = document.getElementById('rk-submit');
+  submitBtn?.addEventListener('click', async () => {
+    if (!rankingPick || rankingBusy) return;
+    submitBtn.disabled = true; const old = submitBtn.textContent; submitBtn.textContent = 'กำลังส่ง...';
+    const ok = await rankingSubmit(rankingPick, rankingCustomCover);
+    submitBtn.disabled = false; submitBtn.textContent = old;
+    if (ok) { closeRankingModal(); if (input) input.value = ''; renderRankingSearch(null); }
+  });
+}
+// เข้าหน้า Ranking = โหลดทันที + รีเฟรชอัตโนมัติทุก 30 วินาที / ออกจากหน้า = หยุด
+function startRankingView() {
+  loadRanking(false);
+  clearInterval(rankingTimer);
+  rankingTimer = setInterval(() => { if (document.visibilityState === 'visible') loadRanking(true); }, RANKING_REFRESH_MS);
+}
+function stopRankingView() { clearInterval(rankingTimer); rankingTimer = null; }
+
+// ============================================================
 // MAIN APP
 // ============================================================
-let accessToken = null, currentTrackData = null, currentContextTrack = null;
+let accessToken = null, currentTrackData = null, currentContextTrack = null, currentUser = null;
 
 async function init() {
   // ผูกปุ่ม/เมนูทั้งหมดก่อนเสมอ — ถ้าโหลดข้อมูลพลาดหรือเป็นบัญชี Free หน้าเว็บจะยังกดใช้/ออกจากระบบได้
@@ -641,7 +839,7 @@ async function init() {
       showAccessError(e);
       return;
     }
-    if (profile) renderUserProfile(profile);
+    if (profile) { currentUser = profile; renderUserProfile(profile); }
     // Spotify อาจไม่ส่ง `product` มาใน Dev Mode (Feb 2026) จึงถือว่าเป็น Free ก็ต่อเมื่อมีค่าและไม่ใช่ premium
     // ถ้าไม่มีค่า จะลองเริ่ม Player ก่อน แล้วให้ account_error ของ SDK เป็นตัวบอกว่าไม่ใช่ Premium
     const isFree = !!profile?.product && profile.product !== 'premium';
@@ -660,6 +858,7 @@ async function init() {
 function setupEventListeners() {
   setupSeekBars();
   setupWakeLock();
+  setupRanking();
   document.getElementById('login-button').addEventListener('click', loginWithSpotify);
   document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(`view-${e.target.dataset.target}`); }));
   let searchTimeout;
