@@ -16,6 +16,11 @@
   padding: 0;
 }
 
+html {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body {
   font-family: 'Kanit', 'Outfit', sans-serif;
   background-color: var(--bg-dark);
@@ -96,6 +101,8 @@ body {
 }
 
 #app-screen {
+  overflow: hidden; /* ambient-background ใหญ่กว่าจอ (เพื่อขยับเลื่อนไหล) ต้องถูกตัด ไม่งั้นมือถือจะย่อหน้าเว็บให้พอดีกับส่วนที่ล้น */
+  isolation: isolate;
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
   grid-template-rows: 1fr var(--player-height);
