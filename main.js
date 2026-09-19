@@ -119,9 +119,12 @@ function initSpotifyPlayer(token, onStateChange, onReady) {
 async function transferPlaybackHere(device_id) {
   try { await fetchWebApi('v1/me/player', 'PUT', { device_ids: [device_id], play: false }); } catch(e) {}
 }
-async function playTrack(uri) {
+async function playTrack(uri, contextUri) {
   if (!deviceId) { showToast('⚠️ Player ยังไม่พร้อม กรุณารอสักครู่', 'warning'); return; }
-  try { await fetchWebApi(`v1/me/player/play?device_id=${deviceId}`, 'PUT', { uris: [uri] }); } catch(e) { showToast('❌ ไม่สามารถเล่นเพลงนี้ได้', 'error'); }
+  try {
+    const body = contextUri ? { context_uri: contextUri, offset: { uri } } : { uris: [uri] };
+    await fetchWebApi(`v1/me/player/play?device_id=${deviceId}`, 'PUT', body);
+  } catch(e) { showToast('❌ ไม่สามารถเล่นเพลงนี้ได้', 'error'); }
 }
 const togglePlay = () => { if (window._spotifyPlayer) window._spotifyPlayer.togglePlay(); };
 const nextTrack = () => { if (window._spotifyPlayer) window._spotifyPlayer.nextTrack(); };
@@ -222,7 +225,7 @@ function renderAlbumView(album, tracksData, onPlay) {
     const div = document.createElement('div'); div.className = 'track-item';
     const trackWithAlbum = { ...track, album };
     div.innerHTML = `<img src="${imgUrl}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${idx + 1}. ${track.name}</div><div class="track-item-artist">${track.artists?.map(a=>a.name).join(', ')}</div></div>`;
-    div.onclick = () => onPlay(track.uri);
+    div.onclick = () => onPlay(track.uri, album.uri);
     div.oncontextmenu = (e) => { e.preventDefault(); if (window.showTrackContextMenu) window.showTrackContextMenu(e, trackWithAlbum); };
     tracksContainer.appendChild(div);
   });
