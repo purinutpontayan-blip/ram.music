@@ -215,6 +215,22 @@ function updateLyricsComponent(positionMs, durationMs, paused) {
             lastTime = now;
             lyricsEl.setAttribute('current-time', currentPos);
             lyricsEl.currentTime = currentPos;
+            
+            // Inject Thai clipping fix if not present yet
+            if (lyricsEl.shadowRoot && !lyricsEl.shadowRoot.getElementById('thai-clip-fix')) {
+                const style = document.createElement('style');
+                style.id = 'thai-clip-fix';
+                style.textContent = `
+                    span, .lyrics-line {
+                        padding-top: 0.3em !important;
+                        padding-bottom: 0.3em !important;
+                        margin-top: -0.3em !important;
+                        margin-bottom: -0.3em !important;
+                        line-height: 1.6 !important;
+                    }
+                `;
+                lyricsEl.shadowRoot.appendChild(style);
+            }
         }, 100);
     }
 }
