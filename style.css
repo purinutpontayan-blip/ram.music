@@ -1737,7 +1737,13 @@ am-lyrics {
 .rank-topic-chip.closed:not(.active) { color: var(--text-muted); }
 .rank-topic-info { display: flex; align-items: center; gap: .9rem; margin-top: .6rem; }
 .rank-topic-info.hidden { display: none; }
-.rank-topic-cover { width: 72px; height: 72px; border-radius: 12px; object-fit: cover; flex-shrink: 0; background: rgba(255, 255, 255, .08); }
+.rank-topic-cover { width: 200px; height: 200px; border-radius: 16px; object-fit: cover; flex-shrink: 0; background: rgba(255, 255, 255, .08); box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+.rank-topic-info { gap: 1.5rem; }
+.rank-topic-desc { font-size: 1.05rem; }
+@media (max-width: 768px) {
+  .rank-topic-cover { width: 120px; height: 120px; border-radius: 12px; }
+  .rank-topic-info { gap: 1rem; }
+}
 .rank-topic-desc { color: var(--text-muted); font-size: .92rem; line-height: 1.5; }
 .rank-topic-desc.hidden { display: none; }
 
