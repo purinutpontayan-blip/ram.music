@@ -126,6 +126,23 @@
       </div>
     </div>
 
+    <!-- Context Menu -->
+    <div id="context-menu" class="context-menu hidden">
+      <div class="menu-item" id="menu-play-next">เล่นถัดไป</div>
+      <div class="menu-item" id="menu-add-playlist">เพิ่มไปยังเพลย์ลิสต์...</div>
+    </div>
+    
+    <!-- Playlist Selection Modal -->
+    <div id="playlist-modal" class="playlist-modal hidden">
+        <div class="playlist-modal-content glass-panel">
+            <h3>เลือกเพลย์ลิสต์</h3>
+            <div id="playlist-list" class="playlist-list">
+                <!-- Loading... -->
+            </div>
+            <button class="btn-close-playlist" onclick="document.getElementById('playlist-modal').classList.add('hidden')">ปิด</button>
+        </div>
+    </div>
+
     <!-- Spotify Web Playback SDK -->
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
     <!-- am-lyrics -->
