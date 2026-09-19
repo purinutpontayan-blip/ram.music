@@ -1740,3 +1740,48 @@ am-lyrics {
 .rank-topic-cover { width: 72px; height: 72px; border-radius: 12px; object-fit: cover; flex-shrink: 0; background: rgba(255, 255, 255, .08); }
 .rank-topic-desc { color: var(--text-muted); font-size: .92rem; line-height: 1.5; }
 .rank-topic-desc.hidden { display: none; }
+
+/* ============================================================
+   RANKING — แสดงเป็นการ์ดปก (grid) เหมือนอัลบัม
+   ============================================================ */
+.rank-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.5rem;
+  align-items: start;
+}
+.rank-list > .rank-empty { grid-column: 1 / -1; }
+.rank-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid transparent; }
+.rank-card-cover { position: relative; }
+.rank-card-cover img.is-broken { visibility: hidden; }
+.rank-badge {
+  position: absolute;
+  top: .55rem;
+  left: .55rem;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 .5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(15, 15, 17, .78);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-weight: 700;
+  font-size: .95rem;
+}
+.rank-card.top-1 { border-color: rgba(255, 200, 60, .45); background: linear-gradient(180deg, rgba(255, 200, 60, .12), rgba(255, 255, 255, .02)); }
+.rank-card.top-2 { border-color: rgba(200, 210, 225, .35); background: linear-gradient(180deg, rgba(200, 210, 225, .10), rgba(255, 255, 255, .02)); }
+.rank-card.top-3 { border-color: rgba(210, 130, 70, .35); background: linear-gradient(180deg, rgba(210, 130, 70, .12), rgba(255, 255, 255, .02)); }
+.rank-card.top-1 .rank-badge { background: #ffc83c; color: #1a1a1a; }
+.rank-card.top-2 .rank-badge { background: #d0d8e6; color: #1a1a1a; }
+.rank-card.top-3 .rank-badge { background: #d98a4e; color: #1a1a1a; }
+.rank-card-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rank-card-meta { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: .6rem 0; color: var(--text-muted); font-size: .85rem; }
+.rank-card-meta .rank-votes { display: flex; align-items: baseline; gap: .3rem; }
+.rank-card-meta .rank-votes strong { color: var(--accent); font-size: 1.15rem; }
+.rank-card .rank-vote-btn { width: 100%; margin-top: auto; }
+@media (max-width: 768px) {
+  .rank-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+}
