@@ -7,6 +7,7 @@ import * as UI from './ui.js';
 
 let accessToken = null;
 let currentTrackData = null;
+let currentContextTrack = null;
 
 async function init() {
     // Check for redirect or existing token
@@ -49,6 +50,7 @@ async function init() {
     }
 
     setupEventListeners();
+    setupContextMenu();
 }
 
 function setupEventListeners() {
@@ -101,6 +103,78 @@ function setupEventListeners() {
     
     const btnLyricsPrev = document.getElementById('btn-lyrics-prev');
     if (btnLyricsPrev) btnLyricsPrev.addEventListener('click', previousTrack);
+}
+
+function setupContextMenu() {
+    const menu = document.getElementById('context-menu');
+    
+    // Hide menu when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.context-menu')) {
+            menu.classList.add('hidden');
+        }
+    });
+
+    // Expose for UI to call
+    window.showTrackContextMenu = (e, track) => {
+        currentContextTrack = track;
+        menu.style.left = `${e.pageX}px`;
+        menu.style.top = `${e.pageY}px`;
+        menu.classList.remove('hidden');
+    };
+
+    document.getElementById('menu-play-next').addEventListener('click', async () => {
+        if (currentContextTrack) {
+            try {
+                await fetchWebApi(`v1/me/player/queue?uri=${currentContextTrack.uri}`, 'POST');
+                UI.showToast('✅ เพิ่มลงในคิวแล้ว', 'info');
+            } catch (e) {
+                UI.showToast('❌ ไม่สามารถเพิ่มลงคิวได้', 'error');
+            }
+        }
+        menu.classList.add('hidden');
+    });
+
+    document.getElementById('menu-add-playlist').addEventListener('click', async () => {
+        if (currentContextTrack) {
+            // Open playlist modal
+            document.getElementById('playlist-modal').classList.remove('hidden');
+            const listContainer = document.getElementById('playlist-list');
+            listContainer.innerHTML = 'กำลังโหลด...';
+            
+            try {
+                // Fetch user's own playlists
+                const user = await getUserProfile();
+                const playlists = await fetchWebApi('v1/me/playlists?limit=50');
+                
+                const myPlaylists = playlists.items.filter(p => p.owner.id === user.id);
+                
+                listContainer.innerHTML = '';
+                if (myPlaylists.length === 0) {
+                    listContainer.innerHTML = 'ไม่พบเพลย์ลิสต์ของคุณ';
+                } else {
+                    myPlaylists.forEach(p => {
+                        const item = document.createElement('div');
+                        item.className = 'playlist-list-item';
+                        item.textContent = p.name;
+                        item.onclick = async () => {
+                            try {
+                                await fetchWebApi(`v1/playlists/${p.id}/tracks?uris=${currentContextTrack.uri}`, 'POST');
+                                UI.showToast(`✅ เพิ่มเพลงลงใน ${p.name} แล้ว`, 'info');
+                                document.getElementById('playlist-modal').classList.add('hidden');
+                            } catch (err) {
+                                UI.showToast('❌ ไม่สามารถเพิ่มเพลงได้', 'error');
+                            }
+                        };
+                        listContainer.appendChild(item);
+                    });
+                }
+            } catch (e) {
+                listContainer.innerHTML = 'เกิดข้อผิดพลาดในการโหลดเพลย์ลิสต์';
+            }
+        }
+        menu.classList.add('hidden');
+    });
 }
 
 function handlePlayerStateChange(state) {
@@ -183,6 +257,17 @@ async function setupLyricsComponent(track) {
     lyricsEl.setAttribute('interpolate', 'false'); // Fix Thai character splitting
     lyricsEl.setAttribute('font-family', "'Kanit', sans-serif");
     
+    // Allow clicking lyrics to control playback
+    lyricsEl.addEventListener('seek', (e) => {
+        if (!window._spotifyPlayer) return;
+        let timeMs = typeof e.detail === 'number' ? e.detail : e.detail?.time;
+        if (timeMs !== undefined) {
+            // some versions emit seconds
+            if (timeMs < 10000) timeMs *= 1000;
+            window._spotifyPlayer.seek(timeMs);
+        }
+    });
+
     container.appendChild(lyricsEl);
 }
 
