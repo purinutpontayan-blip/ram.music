@@ -47,17 +47,34 @@
 
         <!-- View Containers -->
         <div class="view active" id="view-home">
-          <h2>Welcome Back</h2>
-          <div class="playlists-grid" id="playlists-grid">
+          <h2>ประวัติการฟัง</h2>
+          <div class="history-grid" id="history-grid">
             <!-- Populated by JS -->
           </div>
         </div>
 
         <div class="view" id="view-search">
           <h2>Search Results</h2>
-          <div class="tracks-list" id="search-results">
+          <div class="search-section">
+            <h3>Artists</h3>
+            <div class="artists-grid" id="search-artists"></div>
+          </div>
+          <div class="search-section">
+            <h3>Tracks</h3>
+            <div class="tracks-list" id="search-results">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <div class="view" id="view-artist">
+          <div class="artist-header" id="artist-header">
             <!-- Populated by JS -->
           </div>
+          <h3>Top Tracks</h3>
+          <div class="tracks-list" id="artist-top-tracks"></div>
+          <h3>Albums</h3>
+          <div class="albums-grid" id="artist-albums"></div>
         </div>
       </main>
     <!-- Bottom Player (Hidden when not authenticated) -->
