@@ -99,7 +99,22 @@ export function updatePlayerUI(state) {
     if (modalArt) modalArt.src = track.album.images[0]?.url;
     
     const modalTitle = document.getElementById('lyrics-modal-title');
-    if (modalTitle) modalTitle.textContent = track.name;
+    if (modalTitle) {
+        const titleText = track.name;
+        // Duplicate text for seamless looping marquee
+        modalTitle.innerHTML = `<span class="marquee-inner">${titleText}&nbsp;&nbsp;&nbsp;${titleText}</span>`;
+        // Check overflow after paint
+        requestAnimationFrame(() => {
+            const inner = modalTitle.querySelector('.marquee-inner');
+            if (inner && inner.scrollWidth > modalTitle.clientWidth * 2 + 1) {
+                modalTitle.classList.add('is-overflow');
+            } else {
+                modalTitle.classList.remove('is-overflow');
+                // If it fits, just show the title once cleanly
+                modalTitle.innerHTML = `<span class="marquee-inner">${titleText}</span>`;
+            }
+        });
+    }
     
     const modalArtist = document.getElementById('lyrics-modal-artist');
     if (modalArtist) modalArtist.textContent = track.artists.map(a => a.name).join(', ');
