@@ -60,8 +60,8 @@ const getUserProfile = () => fetchWebApi('v1/me');
 const getRecentlyPlayed = () => fetchWebApi('v1/me/player/recently-played?limit=20');
 const searchSpotify = (q) => fetchWebApi(`v1/search?q=${encodeURIComponent(q)}&type=track,artist,album&limit=10`);
 const getArtist = (id) => fetchWebApi(`v1/artists/${id}`);
-const getArtistTopTracks = (id) => fetchWebApi(`v1/artists/${id}/top-tracks?market=TH`);
-const getArtistAlbums = (id) => fetchWebApi(`v1/artists/${id}/albums?include_groups=album,single&market=TH&limit=20`);
+const getArtistTopTracks = (id) => fetchWebApi(`v1/artists/${id}/top-tracks`);
+const getArtistAlbums = (id) => fetchWebApi(`v1/artists/${id}/albums?include_groups=album,single&limit=20`);
 
 // ============================================================
 // PLAYER
@@ -163,11 +163,12 @@ function renderSearchResults(results, onPlay, onArtistClick) {
 function renderArtistView(artist, topTracks, albums, onPlay) {
   const header = document.getElementById('artist-header');
   const imgUrl = artist.images?.[0]?.url || '';
-  header.innerHTML = `<div style="display:flex;align-items:center;gap:20px;margin-bottom:30px"><img src="${imgUrl}" alt="${artist.name}" style="width:150px;height:150px;border-radius:50%;object-fit:cover;box-shadow:0 8px 24px rgba(0,0,0,.5)"><div><h1 style="font-size:3rem;margin:0">${artist.name}</h1><p style="color:var(--text-muted);margin-top:10px">${artist.followers.total.toLocaleString()} followers</p></div></div>`;
+  const followersCount = artist.followers?.total ? artist.followers.total.toLocaleString() : '0';
+  header.innerHTML = `<div style="display:flex;align-items:center;gap:20px;margin-bottom:30px"><img src="${imgUrl}" alt="${artist.name}" style="width:150px;height:150px;border-radius:50%;object-fit:cover;box-shadow:0 8px 24px rgba(0,0,0,.5)"><div><h1 style="font-size:3rem;margin:0">${artist.name}</h1><p style="color:var(--text-muted);margin-top:10px">${followersCount} followers</p></div></div>`;
   const tracksContainer = document.getElementById('artist-top-tracks'); tracksContainer.innerHTML = '';
   topTracks?.tracks?.slice(0,5).forEach(track => {
     const div = document.createElement('div'); div.className = 'track-item';
-    div.innerHTML = `<img src="${track.album.images[0]?.url}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${track.name}</div><div class="track-item-artist">${track.artists.map(a=>a.name).join(', ')}</div></div>`;
+    div.innerHTML = `<img src="${track.album?.images?.[0]?.url || ''}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${track.name}</div><div class="track-item-artist">${track.artists?.map(a=>a.name).join(', ')}</div></div>`;
     div.onclick = () => onPlay(track.uri);
     div.oncontextmenu = (e) => { e.preventDefault(); if (window.showTrackContextMenu) window.showTrackContextMenu(e, track); };
     tracksContainer.appendChild(div);
@@ -175,7 +176,7 @@ function renderArtistView(artist, topTracks, albums, onPlay) {
   const albumsContainer = document.getElementById('artist-albums'); albumsContainer.innerHTML = '';
   albums?.items?.forEach(album => {
     const div = document.createElement('div'); div.className = 'album-card playlist-card';
-    div.innerHTML = `<img src="${album.images[0]?.url}" alt="${album.name}"><div class="playlist-title">${album.name}</div><div class="playlist-owner">${new Date(album.release_date).getFullYear()} • ${album.album_type}</div>`;
+    div.innerHTML = `<img src="${album.images?.[0]?.url || ''}" alt="${album.name}"><div class="playlist-title">${album.name}</div><div class="playlist-owner">${new Date(album.release_date).getFullYear()} • ${album.album_type}</div>`;
     albumsContainer.appendChild(div);
   });
 }
@@ -329,9 +330,18 @@ function setupEventListeners() {
 }
 
 async function handleArtistClick(artistId) {
-  showView('view-artist');
-  const [artist, topTracks, albums] = await Promise.all([getArtist(artistId), getArtistTopTracks(artistId), getArtistAlbums(artistId)]);
-  renderArtistView(artist, topTracks, albums, playTrack);
+  try {
+    showView('view-artist');
+    document.getElementById('artist-header').innerHTML = 'กำลังโหลด...';
+    document.getElementById('artist-top-tracks').innerHTML = '';
+    document.getElementById('artist-albums').innerHTML = '';
+    const [artist, topTracks, albums] = await Promise.all([getArtist(artistId), getArtistTopTracks(artistId), getArtistAlbums(artistId)]);
+    renderArtistView(artist, topTracks, albums, playTrack);
+  } catch (err) {
+    console.error('Error fetching artist:', err);
+    showToast('❌ ไม่สามารถโหลดข้อมูลศิลปินได้ (อาจเป็นเพราะไม่มีข้อมูลในภูมิภาคนี้)', 'error');
+    document.getElementById('artist-header').innerHTML = '<div style="color:red">เกิดข้อผิดพลาดในการโหลดข้อมูลศิลปิน</div>';
+  }
 }
 
 function setupContextMenu() {
