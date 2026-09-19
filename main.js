@@ -86,14 +86,44 @@ function setupEventListeners() {
     document.getElementById('btn-prev').addEventListener('click', previousTrack);
 
     // Lyrics Toggle
-    document.getElementById('btn-lyrics-toggle').addEventListener('click', () => {
+    document.getElementById('btn-lyrics-toggle').addEventListener('click', async () => {
         UI.toggleLyricsModal();
-        updateLyricsComponent(); // Update in case state changed while closed
+        // Resume lyrics sync with current player state
+        if (window._spotifyPlayer) {
+            const state = await window._spotifyPlayer.getCurrentState();
+            if (state) {
+                updateLyricsComponent(state.position, state.duration, state.paused);
+            }
+        }
     });
 
     document.getElementById('btn-close-lyrics').addEventListener('click', () => {
         UI.toggleLyricsModal();
     });
+
+    // Fullscreen toggle for lyrics modal
+    const btnFs = document.getElementById('btn-fullscreen-lyrics');
+    if (btnFs) {
+        btnFs.addEventListener('click', () => {
+            const modal = document.getElementById('lyrics-modal');
+            if (!document.fullscreenElement) {
+                modal.requestFullscreen().catch(err => console.warn('Fullscreen error:', err));
+            } else {
+                document.exitFullscreen();
+            }
+        });
+        document.addEventListener('fullscreenchange', () => {
+            const enter = document.getElementById('icon-fullscreen-enter');
+            const exit  = document.getElementById('icon-fullscreen-exit');
+            if (document.fullscreenElement) {
+                enter?.classList.add('hidden');
+                exit?.classList.remove('hidden');
+            } else {
+                enter?.classList.remove('hidden');
+                exit?.classList.add('hidden');
+            }
+        });
+    }
     // Modal Lyrics Controls
     const btnLyricsPlayPause = document.getElementById('btn-lyrics-play-pause');
     if (btnLyricsPlayPause) btnLyricsPlayPause.addEventListener('click', togglePlay);
