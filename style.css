@@ -546,3 +546,219 @@ am-lyrics {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.4);
 }
+
+/* --- Context Menu --- */
+.context-menu {
+  position: absolute;
+  background: rgba(30, 30, 35, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 0.5rem 0;
+  min-width: 200px;
+  z-index: 1000;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.context-menu.hidden {
+  display: none;
+}
+.menu-item {
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: var(--text-main);
+  font-size: 0.95rem;
+}
+.menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* --- Playlist Modal --- */
+.playlist-modal {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.7);
+  z-index: 2000;
+  display: flex; align-items: center; justify-content: center;
+}
+.playlist-modal.hidden { display: none; }
+.playlist-modal-content {
+  width: 400px;
+  max-width: 90%;
+  padding: 2rem;
+  border-radius: 16px;
+  display: flex; flex-direction: column; max-height: 80vh;
+}
+.playlist-list {
+  flex: 1; overflow-y: auto; margin: 1rem 0; display: flex; flex-direction: column; gap: 0.5rem;
+}
+.playlist-list-item {
+  padding: 0.75rem; background: rgba(255,255,255,0.05); border-radius: 8px; cursor: pointer; transition: background 0.2s;
+}
+.playlist-list-item:hover { background: rgba(255,255,255,0.1); }
+.btn-close-playlist {
+  background: rgba(255,255,255,0.1); color: var(--text-main); border: none;
+  padding: 0.75rem; border-radius: 12px; cursor: pointer;
+}
+.btn-close-playlist:hover { background: rgba(255,255,255,0.2); }
+
+/* --- Mobile Responsive UI --- */
+@media (max-width: 768px) {
+  #app-screen {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr var(--player-height) 60px;
+    grid-template-areas:
+      "main"
+      "player"
+      "sidebar";
+  }
+
+  .sidebar {
+    flex-direction: row;
+    padding: 0;
+    border-right: none;
+    border-top: 1px solid var(--glass-border);
+    height: 60px;
+    background: var(--bg-dark);
+    z-index: 30;
+  }
+  
+  .sidebar .logo, .sidebar .user-profile {
+    display: none;
+  }
+  
+  .sidebar nav {
+    flex-direction: row;
+    width: 100%;
+    justify-content: space-around;
+    align-items: center;
+  }
+  
+  .nav-item {
+    font-size: 1rem;
+    padding: 0.5rem;
+    flex: 1;
+    text-align: center;
+    border-radius: 0;
+  }
+  .nav-item.active {
+    background: transparent;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .main-content {
+    padding: 1rem;
+  }
+
+  .playlists-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 1rem;
+  }
+  
+  .login-card {
+    padding: 2rem;
+    width: 90%;
+  }
+
+  .player {
+    padding: 0 1rem;
+    gap: 0.5rem;
+  }
+  
+  .track-info {
+    width: auto;
+    flex: 1;
+    overflow: hidden;
+  }
+  
+  .track-title, .track-artist {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .player-controls {
+    width: auto;
+    flex: none;
+    gap: 0.5rem;
+  }
+  
+  .player-extra {
+    width: auto;
+    flex: none;
+  }
+  
+  .btn-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .btn-play {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .lyrics-btn {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+  }
+
+  /* Full Screen Lyrics Modal adjustments */
+  .lyrics-layout {
+    flex-direction: column;
+    padding: 1rem;
+    padding-top: 4rem; /* space for close button */
+    gap: 1.5rem;
+    justify-content: flex-start;
+    overflow-y: auto;
+  }
+  
+  .btn-close-lyrics {
+    top: 1rem;
+    right: 1rem;
+    width: 40px;
+    height: 40px;
+  }
+
+  .lyrics-left {
+    max-width: 100%;
+    align-items: center;
+    text-align: center;
+    margin-left: 0;
+  }
+
+  .lyrics-left img {
+    width: 60%;
+    max-width: 250px;
+    margin-bottom: 1.5rem;
+  }
+
+  .lyrics-track-title {
+    font-size: 1.5rem;
+  }
+
+  .lyrics-track-artist {
+    font-size: 1rem;
+  }
+  
+  .lyrics-controls {
+    justify-content: center;
+  }
+
+  .lyrics-right {
+    flex: none;
+    height: 50vh;
+    margin-right: 0;
+    width: 100%;
+  }
+  
+  am-lyrics {
+    text-align: center;
+  }
+  
+  .playlist-modal-content {
+    width: 90%;
+    padding: 1.5rem;
+  }
+}
