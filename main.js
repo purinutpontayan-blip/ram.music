@@ -273,17 +273,6 @@ async function setupLyricsComponent(track) {
     lyricsEl.setAttribute('interpolate', 'false'); // Fix Thai character splitting
     lyricsEl.setAttribute('font-family', "'Kanit', sans-serif");
     
-    // Allow clicking lyrics to control playback
-    lyricsEl.addEventListener('seek', (e) => {
-        if (!window._spotifyPlayer) return;
-        let timeMs = typeof e.detail === 'number' ? e.detail : e.detail?.time;
-        if (timeMs !== undefined) {
-            // some versions emit seconds
-            if (timeMs < 10000) timeMs *= 1000;
-            window._spotifyPlayer.seek(timeMs);
-        }
-    });
-
     container.appendChild(lyricsEl);
 }
 
