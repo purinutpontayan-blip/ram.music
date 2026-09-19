@@ -426,31 +426,39 @@ h2 {
   pointer-events: none;
 }
 
-.btn-close-lyrics {
+/* Lyrics modal top-right button group */
+.lyrics-modal-btns {
   position: absolute;
-  top: 2.5rem;
-  right: 3rem;
-  background: transparent;
-  border: none;
+  top: 2rem;
+  right: 2.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  z-index: 60;
+}
+
+.btn-modal-icon {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
   color: var(--text-muted);
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   cursor: pointer;
-  z-index: 60;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+  backdrop-filter: blur(8px);
 }
-.btn-close-lyrics:hover {
-  background: rgba(255,255,255,0.1);
+.btn-modal-icon:hover {
+  background: rgba(255,255,255,0.18);
   color: var(--text-main);
   transform: scale(1.1);
 }
-.btn-close-lyrics svg {
-  width: 32px;
-  height: 32px;
+.btn-modal-icon svg {
+  width: 22px;
+  height: 22px;
 }
 
 .lyrics-layout {
@@ -504,7 +512,7 @@ h2 {
 
 /* Only scroll if text overflows */
 .lyrics-track-title.is-overflow .marquee-inner {
-  animation: marquee-scroll 12s linear infinite;
+  animation: marquee-scroll 30s linear infinite;
   padding-right: 3rem; /* gap between repeats */
 }
 
