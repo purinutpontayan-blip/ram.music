@@ -731,7 +731,9 @@ function ensureTopicBar() {
   let bar = document.getElementById('ranking-topics'); if (bar) return bar;
   const view = document.getElementById('view-ranking'); if (!view) return null;
   bar = rkEl('div', 'rank-topics'); bar.id = 'ranking-topics';
-  bar.append(rkEl('div', 'rank-topic-chips'), rkEl('div', 'rank-topic-desc'));
+  const info = rkEl('div', 'rank-topic-info'), cov = rkEl('img', 'rank-topic-cover'); cov.alt = ''; cov.referrerPolicy = 'no-referrer'; cov.onerror = () => cov.classList.add('hidden');
+  info.append(cov, rkEl('div', 'rank-topic-desc'));
+  bar.append(rkEl('div', 'rank-topic-chips'), info);
   const head = view.querySelector('.rank-header');
   if (head) head.insertAdjacentElement('afterend', bar); else view.prepend(bar);
   return bar;
@@ -739,7 +741,7 @@ function ensureTopicBar() {
 
 function renderTopicBar() {
   const bar = ensureTopicBar(); if (!bar) return;
-  const chips = bar.querySelector('.rank-topic-chips'), desc = bar.querySelector('.rank-topic-desc');
+  const chips = bar.querySelector('.rank-topic-chips'), desc = bar.querySelector('.rank-topic-desc'), cov = bar.querySelector('.rank-topic-cover'), info = bar.querySelector('.rank-topic-info');
   chips.innerHTML = '';
   rankingTopics.forEach(t => {
     const active = t.topicId === rankingTopic?.topicId;
@@ -751,6 +753,10 @@ function renderTopicBar() {
   desc.textContent = !rankingTopics.length ? 'ยังไม่มีหัวข้อจัดอันดับ — รอผู้ดูแลสร้างหัวข้อ'
     : [rankingTopic?.description, note].filter(Boolean).join(' · ');
   desc.classList.toggle('hidden', !desc.textContent);
+  const covUrl = rkSafeUrl(rankingTopic?.cover);
+  cov.classList.remove('hidden'); if (covUrl) cov.src = covUrl; else cov.removeAttribute('src');
+  cov.classList.toggle('hidden', !covUrl);
+  info.classList.toggle('hidden', !covUrl && !desc.textContent);
   // ค้นหา/ส่งเพลงได้เฉพาะหัวข้อที่เปิดโหวต
   const canSubmit = !!rankingTopic && !rankingTopicClosed();
   document.querySelector('#view-ranking .rank-search')?.classList.toggle('hidden', !canSubmit);
