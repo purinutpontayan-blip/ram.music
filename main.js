@@ -582,6 +582,36 @@ function setupSeekBars() {
 }
 
 // ============================================================
+// WAKE LOCK — กันหน้าจอล็อก/ดับอัตโนมัติระหว่างเปิดหน้าเนื้อเพลง
+// ============================================================
+let wakeLock = null, wakeLockWarned = false;
+const isLyricsOpen = () => !document.getElementById('lyrics-modal')?.classList.contains('hidden');
+async function requestWakeLock() {
+  if (wakeLock || document.visibilityState !== 'visible') return;
+  if (!navigator.wakeLock) {
+    if (!wakeLockWarned) { wakeLockWarned = true; showToast('⚠️ เบราว์เซอร์นี้ไม่รองรับการกันหน้าจอดับ', 'warning'); }
+    return;
+  }
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    if (!isLyricsOpen()) { lock.release().catch(() => { }); return; } // ปิดหน้าเนื้อเพลงไปแล้วระหว่างรอ
+    wakeLock = lock;
+    lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+  } catch (e) { console.warn('Wake lock error:', e.name, e.message); wakeLock = null; }
+}
+async function releaseWakeLock() {
+  const lock = wakeLock; wakeLock = null;
+  try { await lock?.release(); } catch (e) { }
+}
+function setupWakeLock() {
+  const modal = document.getElementById('lyrics-modal'); if (!modal) return;
+  // ดูการเปิด/ปิดหน้าเนื้อเพลงจาก class "hidden" ครอบคลุมทุกทาง (ปุ่ม Lyrics, ปุ่มปิด, ออกจากเต็มจอ)
+  new MutationObserver(() => { if (isLyricsOpen()) requestWakeLock(); else releaseWakeLock(); }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+  // เบราว์เซอร์จะปล่อย wake lock เองเมื่อแท็บถูกซ่อน (สลับแอป/ปิดจอ) ต้องขอใหม่เมื่อกลับมา
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && isLyricsOpen()) requestWakeLock(); });
+}
+
+// ============================================================
 // MAIN APP
 // ============================================================
 let accessToken = null, currentTrackData = null, currentContextTrack = null;
@@ -621,6 +651,7 @@ async function init() {
 
 function setupEventListeners() {
   setupSeekBars();
+  setupWakeLock();
   document.getElementById('login-button').addEventListener('click', loginWithSpotify);
   document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(`view-${e.target.dataset.target}`); }));
   let searchTimeout;
