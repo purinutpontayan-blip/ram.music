@@ -335,11 +335,19 @@ async function handleArtistClick(artistId) {
     document.getElementById('artist-header').innerHTML = 'กำลังโหลด...';
     document.getElementById('artist-top-tracks').innerHTML = '';
     document.getElementById('artist-albums').innerHTML = '';
-    const [artist, topTracks, albums] = await Promise.all([getArtist(artistId), getArtistTopTracks(artistId), getArtistAlbums(artistId)]);
+    
+    const artist = await getArtist(artistId);
+    
+    // Fetch these independently so if one fails, it doesn't break the whole page
+    const [topTracks, albums] = await Promise.all([
+      fetchWebApi(`v1/artists/${artistId}/top-tracks?market=TH`).catch(e => { console.warn('Top tracks failed:', e); return { tracks: [] }; }),
+      getArtistAlbums(artistId).catch(e => { console.warn('Albums failed:', e); return { items: [] }; })
+    ]);
+    
     renderArtistView(artist, topTracks, albums, playTrack);
   } catch (err) {
     console.error('Error fetching artist:', err);
-    showToast('❌ ไม่สามารถโหลดข้อมูลศิลปินได้ (อาจเป็นเพราะไม่มีข้อมูลในภูมิภาคนี้)', 'error');
+    showToast('❌ ไม่สามารถโหลดข้อมูลศิลปินหลักได้', 'error');
     document.getElementById('artist-header').innerHTML = '<div style="color:red">เกิดข้อผิดพลาดในการโหลดข้อมูลศิลปิน</div>';
   }
 }
