@@ -92,9 +92,37 @@
 
     <!-- Lyrics Modal -->
     <div id="lyrics-modal" class="lyrics-modal hidden">
-      <button id="btn-close-lyrics" class="btn-close-lyrics">×</button>
-      <div id="lyrics-container" class="lyrics-container">
-        <!-- am-lyrics will be injected here -->
+      <button id="btn-close-lyrics" class="btn-close-lyrics">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z" /></svg>
+      </button>
+      
+      <div class="lyrics-layout">
+        <div class="lyrics-left">
+          <img id="lyrics-modal-art" src="" alt="Album Art" />
+          <div class="lyrics-track-details">
+            <div id="lyrics-modal-title" class="lyrics-track-title"></div>
+            <div id="lyrics-modal-artist" class="lyrics-track-artist"></div>
+          </div>
+          
+          <div class="lyrics-controls">
+            <button id="btn-lyrics-prev" class="btn-icon">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6,18V6H8V18H6M9.5,12L18,6V18L9.5,12Z" /></svg>
+            </button>
+            <button id="btn-lyrics-play-pause" class="btn-icon btn-play">
+              <svg id="lyrics-icon-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z" /></svg>
+              <svg id="lyrics-icon-pause" class="hidden" viewBox="0 0 24 24"><path fill="currentColor" d="M14,19H18V5H14M6,19H10V5H6V19Z" /></svg>
+            </button>
+            <button id="btn-lyrics-next" class="btn-icon">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M16,18H18V6H16M6,18L14.5,12L6,6V18Z" /></svg>
+            </button>
+          </div>
+        </div>
+        
+        <div class="lyrics-right">
+          <div id="lyrics-container" class="lyrics-container">
+            <!-- am-lyrics will be injected here -->
+          </div>
+        </div>
       </div>
     </div>
 
