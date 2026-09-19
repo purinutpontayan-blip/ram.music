@@ -108,11 +108,14 @@ function setupEventListeners() {
 function setupContextMenu() {
     const menu = document.getElementById('context-menu');
     
-    // Hide menu when clicking outside
+    // Hide menu on any click
     document.addEventListener('click', (e) => {
-        if (!e.target.closest('.context-menu')) {
+        if (!e.target.closest('#context-menu')) {
             menu.classList.add('hidden');
         }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') menu.classList.add('hidden');
     });
 
     // Expose for UI to call
@@ -215,26 +218,6 @@ function updateLyricsComponent(positionMs, durationMs, paused) {
             lastTime = now;
             lyricsEl.setAttribute('current-time', currentPos);
             lyricsEl.currentTime = currentPos;
-            
-            // Fix Thai combining characters being isolated by am-lyrics character splitting
-            if (lyricsEl.shadowRoot) {
-                const charSpans = lyricsEl.shadowRoot.querySelectorAll('.char:not(.thai-fixed)');
-                for (let i = 0; i < charSpans.length; i++) {
-                    const span = charSpans[i];
-                    span.classList.add('thai-fixed');
-                    if (span.textContent && /^[\u0E31\u0E33-\u0E3A\u0E47-\u0E4E]+$/.test(span.textContent)) {
-                        let prev = span.previousElementSibling;
-                        while (prev && (!prev.classList.contains('char') || prev.style.display === 'none')) {
-                            prev = prev.previousElementSibling;
-                        }
-                        if (prev) {
-                            prev.textContent += span.textContent;
-                            span.textContent = '';
-                            span.style.display = 'none';
-                        }
-                    }
-                }
-            }
         }, 100);
     }
 }
@@ -277,6 +260,41 @@ async function setupLyricsComponent(track) {
     lyricsEl.setAttribute('font-family', "'Kanit', sans-serif");
     
     container.appendChild(lyricsEl);
+
+    // Fix Thai combining characters isolated into separate spans by am-lyrics
+    // Thai combining range: \u0E31, \u0E33-\u0E3A (vowels/sara), \u0E47-\u0E4E (tone marks)
+    const THAI_COMBINING = /^[\u0E31\u0E33-\u0E3A\u0E47-\u0E4E]+$/;
+    
+    function fixThaiSpans(root) {
+        const spans = root.querySelectorAll('.char:not(.th-ok)');
+        spans.forEach(span => {
+            span.classList.add('th-ok');
+            if (span.textContent && THAI_COMBINING.test(span.textContent)) {
+                // Walk backwards to find previous visible base consonant span
+                let prev = span.previousElementSibling;
+                while (prev && (!prev.classList.contains('char') || prev.style.display === 'none')) {
+                    prev = prev.previousElementSibling;
+                }
+                if (prev) {
+                    prev.textContent += span.textContent;
+                    span.textContent = '';
+                    span.style.display = 'none';
+                }
+            }
+        });
+    }
+
+    // Wait for shadow root to be available, then observe
+    const waitForShadow = setInterval(() => {
+        if (lyricsEl.shadowRoot) {
+            clearInterval(waitForShadow);
+            // Run once immediately for any existing spans
+            fixThaiSpans(lyricsEl.shadowRoot);
+            // Then observe future DOM mutations (new lines rendered)
+            const obs = new MutationObserver(() => fixThaiSpans(lyricsEl.shadowRoot));
+            obs.observe(lyricsEl.shadowRoot, { childList: true, subtree: true });
+        }
+    }, 50);
 }
 
 // Start app
