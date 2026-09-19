@@ -1,176 +1,151 @@
-// src/main.js
-import './style.css';
+// src/spotify.js
 
-import { loginWithSpotify, handleRedirect, getUserProfile, getFeaturedPlaylists, searchSpotify } from './spotify.js';
-import { initSpotifyPlayer, playTrack, togglePlay, nextTrack, previousTrack, showPremiumRequiredModal } from './player.js';
-import * as UI from './ui.js';
+const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
+const REDIRECT_URI = window.location.origin;
 
-let accessToken = null;
-let currentTrackData = null;
-
-async function init() {
-    // Check for redirect or existing token
-    accessToken = await handleRedirect();
-
-    if (accessToken) {
-        // Logged in
-        UI.showScreen('app-screen');
-        document.getElementById('player-screen').classList.remove('hidden');
-
-        // Load Profile
-        const profile = await getUserProfile();
-        if (profile) {
-            UI.renderUserProfile(profile);
-            
-            // Check for premium account
-            if (profile.product !== 'premium') {
-                showPremiumRequiredModal();
-                // Hide player elements to prevent errors
-                document.getElementById('player-screen').classList.add('hidden');
-                return; // Stop further initialization for non-premium
-            }
-        }
-
-        // Load Featured Playlists
-        const playlists = await getFeaturedPlaylists();
-        if (playlists) UI.renderPlaylists(playlists, (uri) => {
-            // Simplified: just alert for playlists as we need context_uri for player which we haven't implemented fully
-            alert("Playing playlists not fully implemented in this demo. Try searching for a track!");
-        });
-
-        // Initialize Player
-        initSpotifyPlayer(accessToken, handlePlayerStateChange, () => {
-            console.log("Player is ready!");
-        });
-
-    } else {
-        // Not logged in
-        UI.showScreen('login-screen');
+// PKCE Utilities
+function generateRandomString(length) {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < length; i++) {
+        text += possible.charAt(Math.floor(Math.random() * possible.length));
     }
-
-    setupEventListeners();
+    return text;
 }
 
-function setupEventListeners() {
-    // Login button
-    document.getElementById('login-button').addEventListener('click', loginWithSpotify);
-
-    // Navigation
-    document.querySelectorAll('.nav-item').forEach(el => {
-        el.addEventListener('click', (e) => {
-            e.preventDefault();
-            UI.showView(`view-${e.target.dataset.target}`);
-        });
-    });
-
-    // Search
-    let searchTimeout;
-    document.getElementById('search-input').addEventListener('input', (e) => {
-        clearTimeout(searchTimeout);
-        const query = e.target.value;
-        if (query.length > 2) {
-            searchTimeout = setTimeout(async () => {
-                const results = await searchSpotify(query);
-                UI.renderSearchResults(results, playTrack);
-            }, 500);
-        } else {
-            UI.renderSearchResults(null, null); // clear
-        }
-    });
-
-    // Player Controls
-    document.getElementById('btn-play-pause').addEventListener('click', togglePlay);
-    document.getElementById('btn-next').addEventListener('click', nextTrack);
-    document.getElementById('btn-prev').addEventListener('click', previousTrack);
-
-    // Lyrics Toggle
-    document.getElementById('btn-lyrics-toggle').addEventListener('click', () => {
-        UI.toggleLyricsModal();
-        updateLyricsComponent(); // Update in case state changed while closed
-    });
-
-    document.getElementById('btn-close-lyrics').addEventListener('click', () => {
-        UI.toggleLyricsModal();
-    });
-    // Modal Lyrics Controls
-    const btnLyricsPlayPause = document.getElementById('btn-lyrics-play-pause');
-    if (btnLyricsPlayPause) btnLyricsPlayPause.addEventListener('click', togglePlay);
-    
-    const btnLyricsNext = document.getElementById('btn-lyrics-next');
-    if (btnLyricsNext) btnLyricsNext.addEventListener('click', nextTrack);
-    
-    const btnLyricsPrev = document.getElementById('btn-lyrics-prev');
-    if (btnLyricsPrev) btnLyricsPrev.addEventListener('click', previousTrack);
+async function generateCodeChallenge(codeVerifier) {
+    const data = new TextEncoder().encode(codeVerifier);
+    const digest = await window.crypto.subtle.digest('SHA-256', data);
+    return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)]))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
 }
 
-function handlePlayerStateChange(state) {
-    if (!state) return;
-    
-    UI.updatePlayerUI(state);
-
-    const track = state.track_window.current_track;
-    if (track && (!currentTrackData || currentTrackData.id !== track.id)) {
-        currentTrackData = track;
-        setupLyricsComponent(track);
+export async function loginWithSpotify() {
+    if (!CLIENT_ID || CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
+        alert("Please set your Spotify Client ID in the .env file!");
+        return;
     }
-    
-    // Update current time on lyrics if playing
-    updateLyricsComponent(state.position, state.duration, state.paused);
+
+    const verifier = generateRandomString(128);
+    const challenge = await generateCodeChallenge(verifier);
+
+    localStorage.setItem('spotify_verifier', verifier);
+
+    const params = new URLSearchParams({
+        client_id: CLIENT_ID,
+        response_type: 'code',
+        redirect_uri: REDIRECT_URI,
+        code_challenge_method: 'S256',
+        code_challenge: challenge,
+        scope: [
+            'user-read-private',
+            'user-read-email',
+            'streaming',
+            'user-read-playback-state',
+            'user-modify-playback-state',
+            'user-library-read',
+            'playlist-read-private',
+            'playlist-read-collaborative',
+            'user-top-read'
+        ].join(' ')
+    });
+
+    window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
 
-let lyricsUpdateInterval;
-function updateLyricsComponent(positionMs, durationMs, paused) {
-    const lyricsEl = document.querySelector('am-lyrics');
-    if (!lyricsEl) return;
-    
-    // Sync position
-    if (positionMs !== undefined) {
-        lyricsEl.setAttribute('current-time', positionMs);
-        lyricsEl.setAttribute('duration', paused ? -1 : durationMs); // -1 stops playback animation
-    }
+export async function handleRedirect() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
 
-    // Try to simulate real-time update when playing (since Spotify state doesn't update every MS)
-    clearInterval(lyricsUpdateInterval);
-    if (!paused && positionMs !== undefined) {
-        let currentPos = positionMs;
-        let lastTime = performance.now();
+    if (code) {
+        // Clear the code from the URL
+        window.history.replaceState({}, document.title, "/");
         
-        lyricsUpdateInterval = setInterval(() => {
-            const now = performance.now();
-            currentPos += (now - lastTime);
-            lastTime = now;
-            lyricsEl.setAttribute('current-time', currentPos);
-            lyricsEl.currentTime = currentPos;
-        }, 100);
+        const verifier = localStorage.getItem('spotify_verifier');
+        const body = new URLSearchParams({
+            client_id: CLIENT_ID,
+            grant_type: 'authorization_code',
+            code: code,
+            redirect_uri: REDIRECT_URI,
+            code_verifier: verifier
+        });
+
+        try {
+            const response = await fetch('https://accounts.spotify.com/api/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: body
+            });
+
+            if (!response.ok) {
+                throw new Error('HTTP status ' + response.status);
+            }
+            const data = await response.json();
+            localStorage.setItem('spotify_access_token', data.access_token);
+            localStorage.setItem('spotify_refresh_token', data.refresh_token);
+            return data.access_token;
+        } catch (error) {
+            console.error('Error fetching token:', error);
+            return null;
+        }
+    }
+    
+    return localStorage.getItem('spotify_access_token');
+}
+
+export async function fetchWebApi(endpoint, method = 'GET', body) {
+    const token = localStorage.getItem('spotify_access_token');
+    const res = await fetch(`https://api.spotify.com/${endpoint}`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        method,
+        body: body ? JSON.stringify(body) : undefined
+    });
+
+    if (res.status === 401) {
+        // Token expired (ideally we should use refresh token here, keeping it simple for now)
+        localStorage.removeItem('spotify_access_token');
+        window.location.reload();
+    }
+
+    if (!res.ok) {
+        throw new Error(`API error: ${res.status}`);
+    }
+
+    if (res.status === 204) return null; // Handle 204 No Content for successful requests without body
+
+    return await res.json();
+}
+
+export async function getUserProfile() {
+    return await fetchWebApi('v1/me');
+}
+
+export async function searchSpotify(query) {
+    return await fetchWebApi(`v1/search?q=${encodeURIComponent(query)}&type=track,artist,album&limit=10`);
+}
+
+export async function getFeaturedPlaylists() {
+    try {
+        const data = await fetchWebApi('v1/browse/featured-playlists?limit=12&locale=th_TH');
+        if (data && data.playlists && data.playlists.items && data.playlists.items.length > 0) {
+            return data;
+        }
+    } catch (e) {
+        console.warn('Featured playlists failed, trying user playlists...');
+    }
+    // Fallback: get user's own playlists
+    try {
+        const data = await fetchWebApi('v1/me/playlists?limit=12');
+        // Wrap in same structure
+        return { playlists: data };
+    } catch (e) {
+        console.error('Failed to fetch playlists:', e);
+        return null;
     }
 }
-
-function setupLyricsComponent(track) {
-    const container = document.getElementById('lyrics-container');
-    container.innerHTML = ''; // clear old
-
-    // Clean up the title to improve search accuracy (e.g., remove "- Remastered", "(feat. )")
-    let cleanTitle = track.name.split(' - ')[0];
-    cleanTitle = cleanTitle.split(' (')[0];
-    
-    // Use only the primary artist for a more accurate search
-    const primaryArtist = track.artists[0].name;
-    const album = track.album.name;
-
-    const lyricsEl = document.createElement('am-lyrics');
-    lyricsEl.setAttribute('song-title', cleanTitle);
-    lyricsEl.setAttribute('song-artist', primaryArtist);
-    lyricsEl.setAttribute('song-album', album);
-    
-    // Try passing original raw title too as fallback if cleanTitle fails
-    // The library may be struggling with strict queries, so we let it use the song-title
-    
-    lyricsEl.setAttribute('autoscroll', 'true');
-    lyricsEl.setAttribute('interpolate', 'false'); // Fix Thai character splitting
-    lyricsEl.setAttribute('font-family', "'Kanit', sans-serif");
-    
-    container.appendChild(lyricsEl);
-}
-
-// Start app
-init();
