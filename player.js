@@ -65,6 +65,7 @@ export function initSpotifyPlayer(token, onStateChange, onReady) {
         });
 
         player.connect();
+        window._spotifyPlayer = player;
     };
 
     if (sdkIsReady) {
