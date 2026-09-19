@@ -222,9 +222,9 @@ function updateLyricsComponent(positionMs, durationMs, paused) {
                 for (let i = 0; i < charSpans.length; i++) {
                     const span = charSpans[i];
                     span.classList.add('thai-fixed');
-                    if (span.textContent && /^[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]+$/.test(span.textContent)) {
+                    if (span.textContent && /^[\u0E31\u0E33-\u0E3A\u0E47-\u0E4E]+$/.test(span.textContent)) {
                         let prev = span.previousElementSibling;
-                        while (prev && !prev.classList.contains('char')) {
+                        while (prev && (!prev.classList.contains('char') || prev.style.display === 'none')) {
                             prev = prev.previousElementSibling;
                         }
                         if (prev) {
