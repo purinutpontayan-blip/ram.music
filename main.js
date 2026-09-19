@@ -668,26 +668,32 @@ function renderRanking(items) {
   const box = document.getElementById('ranking-list'); if (!box) return;
   box.innerHTML = '';
   if (!items?.length) { rankingNotice(box, rankingTopicClosed() ? 'หัวข้อนี้ปิดโหวตแล้วและยังไม่มีเพลงในอันดับ' : 'ยังไม่มีเพลงในหัวข้อนี้ — ค้นหาเพลงด้านบนแล้วเป็นคนแรกที่ส่งเลย! 🎵'); return; }
+  const closed = rankingTopicClosed();
+  // แสดงเป็นการ์ดปกเพลง เหมือนอัลบัม/ศิลปินในหน้าค้นหา
   items.slice(0, 20).forEach(it => {
-    const row = rkEl('div', 'rank-item' + (it.rank <= 3 ? ` top-${it.rank}` : ''));
-    const img = rkEl('img', 'rank-cover'); img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+    const card = rkEl('div', 'playlist-card rank-card' + (it.rank <= 3 ? ` top-${it.rank}` : ''));
+    const cover = rkEl('div', 'rank-card-cover');
+    const img = rkEl('img'); img.alt = it.title || ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
     img.src = rkSafeUrl(it.cover); img.onerror = () => img.classList.add('is-broken');
-    const info = rkEl('div', 'rank-info');
-    const artistEl = rkEl('div', 'rank-artist'); if (it.explicit) artistEl.appendChild(rkExplicitBadge()); artistEl.appendChild(document.createTextNode(it.artist || ''));
-    info.append(rkEl('div', 'rank-title', it.title), artistEl);
+    cover.append(img, rkEl('span', 'rank-badge', String(it.rank)));
+    const artistEl = rkEl('div', 'playlist-owner rank-card-artist');
+    if (it.explicit) artistEl.appendChild(rkExplicitBadge());
+    artistEl.appendChild(document.createTextNode(it.artist || '-'));
+    const title = rkEl('div', 'playlist-title', it.title); title.title = it.title || '';
+    const meta = rkEl('div', 'rank-card-meta');
     const votes = rkEl('div', 'rank-votes'); votes.append(rkEl('strong', '', String(it.votes)), rkEl('span', '', 'โหวต'));
-    const closed = rankingTopicClosed();
+    meta.append(votes, rkEl('div', 'rank-duration', it.duration || rkFmt(it.durationMs)));
     const btn = rkEl('button', 'rank-vote-btn', it.voted ? '✓ โหวตแล้ว' : (closed ? '🔒 ปิดโหวต' : '👍 โหวต'));
     btn.type = 'button'; btn.disabled = !!it.voted || closed;
     btn.onclick = (e) => {
       e.stopPropagation();
       rankingSubmit({ trackId: it.trackId, title: it.title, artist: it.artist, durationMs: it.durationMs, cover: it.cover, explicit: !!it.explicit }, null);
     };
-    row.append(rkEl('div', 'rank-num', String(it.rank)), img, info, rkEl('div', 'rank-duration', it.duration || rkFmt(it.durationMs)), votes, btn);
+    card.append(cover, title, artistEl, meta, btn);
     // เพลงที่ผู้ดูแลเพิ่มเอง (manual_) ไม่มีใน Spotify จึงกดเล่นไม่ได้
-    if (!String(it.trackId).startsWith('manual_')) row.onclick = () => playTrack(`spotify:track:${it.trackId}`);
-    else row.style.cursor = 'default';
-    box.appendChild(row);
+    if (!String(it.trackId).startsWith('manual_')) card.onclick = () => playTrack(`spotify:track:${it.trackId}`);
+    else card.style.cursor = 'default';
+    box.appendChild(card);
   });
 }
 
