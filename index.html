@@ -4,6 +4,8 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <!-- เผื่อโฮสต์ส่งทุกพาธมาที่ index.html: พิมพ์ /tv แล้วให้ไปหน้า TV -->
+  <script>if (/^\/tv\/?$/.test(location.pathname)) location.replace('/tv.html' + location.search);</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>R Music</title>
   <!-- Google Fonts -->
@@ -127,6 +129,7 @@
         </div>
       </div>
       <div class="player-extra">
+        <button id="btn-tv-share" class="btn-icon lyrics-btn" title="แชร์ไปยังหน้าจอ TV (Beta)">TV</button>
         <button id="btn-lyrics-toggle" class="btn-icon lyrics-btn">Lyrics</button>
       </div>
     </div>
@@ -135,6 +138,7 @@
   <!-- Lyrics Modal -->
   <div id="lyrics-modal" class="lyrics-modal hidden">
     <div class="lyrics-modal-btns">
+      <button id="btn-tv-share-lyrics" class="btn-modal-icon tv-text" title="แชร์ไปยังหน้าจอ TV (Beta)">TV</button>
       <button id="btn-fullscreen-lyrics" class="btn-modal-icon" title="เต็มหน้าจอ">
         <svg id="icon-fullscreen-enter" viewBox="0 0 24 24">
           <path fill="currentColor"
@@ -197,15 +201,25 @@
           <div id="rk-duration" class="rk-duration"></div>
         </div>
       </div>
-      <label class="rk-file" for="rk-cover-file">
-        <input type="file" id="rk-cover-file" accept="image/png,image/jpeg,image/gif" />
-        <span>🖼️ เปลี่ยนรูปปกเอง (PNG / JPG / GIF ไม่เกิน 1.5MB)</span>
-      </label>
-      <p class="rk-hint">รูปปกที่อัปโหลดจะใช้เมื่อเป็นเพลงที่ยังไม่เคยอยู่ในอันดับเท่านั้น</p>
-      <button type="button" id="rk-cover-reset" class="rk-link hidden">↩ ใช้ปกเดิมจาก Spotify</button>
       <div class="rk-actions">
         <button type="button" id="rk-cancel" class="btn-close-playlist">ยกเลิก</button>
         <button type="button" id="rk-submit" class="btn-primary">ส่งเข้าอันดับ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- แชร์ไปหน้าจอ TV (Beta) -->
+  <div id="tv-modal" class="playlist-modal hidden">
+    <div class="playlist-modal-content glass-panel tv-share-modal">
+      <h3>แชร์ไปยังหน้าจอ TV <span class="tv-beta">BETA</span></h3>
+      <p class="tv-share-hint">พิมพ์ที่อยู่เว็บนี้ตามด้วย /tv บนเบราว์เซอร์ของทีวี (หรือ Cast แท็บไปยังทีวี) แล้วกรอกรหัสด้านล่าง ทีวีจะแสดงเนื้อเพลงและสีพื้นหลังเหมือนหน้าเนื้อเพลงบนเครื่องนี้</p>
+      <div id="tv-share-code" class="tv-share-code">------</div>
+      <div id="tv-share-url" class="tv-share-url"></div>
+      <div id="tv-share-status" class="tv-share-status"></div>
+      <div class="rk-actions">
+        <button type="button" id="tv-share-copy" class="btn-close-playlist hidden">คัดลอกลิงก์</button>
+        <button type="button" id="tv-share-stop" class="btn-close-playlist hidden">หยุดแชร์</button>
+        <button type="button" id="tv-share-close" class="btn-primary">ปิด</button>
       </div>
     </div>
   </div>
