@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>R Music TV (Beta)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <!-- ใช้ไฟล์สไตล์เดียวกับหน้าหลัก เพื่อให้สีพื้นหลัง/เนื้อเพลงเหมือนกันทุกประการ -->
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .tv-connect { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: var(--bg-dark); padding: 2rem; }
+    .tv-card { width: min(560px, 100%); padding: 2.5rem; border-radius: 24px; text-align: center; }
+    .tv-card h1 { font-size: 2.2rem; margin-bottom: .4rem; }
+    .tv-beta { display: inline-block; vertical-align: middle; margin-left: .5rem; padding: .1rem .6rem; border-radius: 999px; background: rgba(255, 255, 255, .15); font-size: .8rem; font-weight: 600; letter-spacing: .04em; }
+    .tv-card p { color: var(--text-muted); line-height: 1.6; margin-bottom: 1.5rem; }
+    #tv-code-input { width: 100%; text-align: center; font: inherit; font-size: 2.6rem; letter-spacing: .5em; padding: .6rem .5rem .6rem 1rem; border-radius: 16px; border: 1px solid var(--glass-border); background: rgba(255, 255, 255, .06); color: var(--text-main); outline: none; margin-bottom: 1rem; }
+    #tv-code-input:focus { border-color: var(--accent); }
+    #tv-connect-msg { min-height: 1.5rem; margin: .8rem 0; color: #ffb4b4; }
+    .tv-card .btn-primary { width: 100%; font-size: 1.2rem; }
+    .tv-status { position: fixed; left: 2rem; bottom: 1.5rem; z-index: 90; padding: .5rem 1rem; border-radius: 999px; background: rgba(0, 0, 0, .6); color: #fff; font-size: 1rem; opacity: 0; transition: opacity .4s; pointer-events: none; }
+    .tv-status.show { opacity: 1; }
+    /* ขยายให้เหมาะกับจอ TV */
+    .tv-modal .lyrics-layout { padding: 3.5vw; gap: 4vw; }
+    .tv-modal .lyrics-left { max-width: 36vw; }
+    .tv-modal .lyrics-track-title { font-size: clamp(2rem, 3.2vw, 4.5rem); }
+    .tv-modal .lyrics-track-artist { font-size: clamp(1.2rem, 1.9vw, 2.6rem); }
+    .tv-modal .seek-bar { pointer-events: none; }
+    .tv-modal .seek-time { font-size: clamp(.8rem, 1.1vw, 1.4rem); }
+  </style>
+</head>
+
+<body>
+  <!-- หน้ากรอกรหัส -->
+  <div id="tv-connect" class="tv-connect">
+    <div class="tv-card glass-panel">
+      <h1>R Music TV <span class="tv-beta">BETA</span></h1>
+      <p>เปิดเว็บเพลเยอร์ R Music บนมือถือหรือคอม กดปุ่ม <b>TV</b> ที่แถบเล่นเพลง แล้วกรอกรหัส 6 หลักที่ขึ้นบนหน้าจอ</p>
+      <input id="tv-code-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••••" autocomplete="off" />
+      <div id="tv-connect-msg"></div>
+      <button id="tv-connect-btn" class="btn-primary" type="button">เชื่อมต่อ</button>
+    </div>
+  </div>
+
+  <!-- หน้าจอเนื้อเพลง (โครงเดียวกับหน้าเนื้อเพลงของเว็บเพลเยอร์) -->
+  <div id="lyrics-modal" class="lyrics-modal tv-modal hidden">
+    <div class="lyrics-layout">
+      <div class="lyrics-left">
+        <img id="lyrics-modal-art" src="" alt="Album Art" />
+        <div class="lyrics-track-details">
+          <div id="lyrics-modal-title" class="lyrics-track-title"></div>
+          <div id="lyrics-modal-artist" class="lyrics-track-artist"></div>
+        </div>
+        <div class="seek-row seek-row-lyrics">
+          <span class="seek-time seek-current">0:00</span>
+          <input type="range" class="seek-bar" min="0" max="1000" step="1" value="0" disabled aria-label="ตำแหน่งเพลง">
+          <span class="seek-time seek-remaining">-0:00</span>
+        </div>
+      </div>
+      <div class="lyrics-right">
+        <div id="lyrics-container" class="lyrics-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tv-status" class="tv-status"></div>
+
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@uimaxbai/am-lyrics/dist/src/am-lyrics.min.js"></script>
+  <script src="/tv.js"></script>
+</body>
+
+</html>
