@@ -1848,3 +1848,6 @@ am-lyrics {
 .tv-share-code { text-align: center; font-size: 2.6rem; font-weight: 700; letter-spacing: .25em; padding: .4rem 0; font-variant-numeric: tabular-nums; }
 .tv-share-url { text-align: center; font-size: .8rem; color: var(--text-muted); word-break: break-all; }
 .tv-share-status { text-align: center; min-height: 1.2rem; font-size: .85rem; color: var(--accent); }
+
+/* เว้นระยะระหว่างปุ่ม TV กับ Lyrics ที่แถบเล่นเพลง */
+.player-extra { gap: .5rem; align-items: center; }
