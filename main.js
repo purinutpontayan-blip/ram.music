@@ -455,11 +455,13 @@ function applyPalette(palette) {
   const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   document.documentElement.style.setProperty('--accent-glow', rgba(palette[0], 0.4));
   // พื้นหลังหน้าหลัก: ไล่สี 5 สีจากปก
+  const mobile = window.matchMedia('(max-width: 768px)').matches;
+  const k = mobile ? 1.7 : 1.2; // มือถือปรับให้สีเข้มขึ้น เพราะจอเล็กและแสงแดดทำให้สีจางลง
   const amb = document.getElementById('ambient-bg');
-  if (amb) palette.forEach((c, i) => amb.style.setProperty(`--amb${i + 1}`, rgba(c, i === 0 ? .42 : .32)));
+  if (amb) palette.forEach((c, i) => amb.style.setProperty(`--amb${i + 1}`, rgba(c, Math.min(.9, (i === 0 ? .42 : .32) * k))));
   // พื้นหลังหน้าเนื้อเพลง: blob 5 ก้อน ก้อนละสี
   const modal = document.getElementById('lyrics-modal'); if (!modal) return;
-  palette.forEach((c, i) => modal.style.setProperty(`--blob${i + 1}`, rgba(c, i < 3 ? .6 : .5)));
+  palette.forEach((c, i) => modal.style.setProperty(`--blob${i + 1}`, rgba(c, Math.min(.95, (i < 3 ? .6 : .5) * (mobile ? 1.5 : 1)))));
   let blobLayer = modal.querySelector('.modal-blobs');
   if (!blobLayer) {
     blobLayer = document.createElement('div'); blobLayer.className = 'modal-blobs';
@@ -508,29 +510,147 @@ function updateLyricsComponent(positionMs, durationMs, paused) {
     lyricsUpdateInterval = setInterval(() => { const now = performance.now(); currentPos += (now - lastTime); lastTime = now; lyricsEl.setAttribute('current-time', currentPos); lyricsEl.currentTime = currentPos; }, 100);
   }
 }
+// ---------- หาเนื้อเพลงที่ "ซิงก์ตามเวลา" ----------
+// 1) ให้ <am-lyrics> ค้นหาก่อน (ส่งชื่อเพลง/ศิลปิน/อัลบั้ม/ISRC/ความยาว เพื่อให้จับคู่ถูกเวอร์ชัน)
+// 2) ถ้าได้แต่เนื้อเพลงเปล่า ๆ (ไม่มีเวลา) หรือไม่เจอเลย -> ค้นหาเวอร์ชันซิงก์จาก LRCLIB เอง
+//    แล้วแปลงเป็น TTML ส่งให้ <am-lyrics> แสดงผล
+const THAI_COMBINING = /^[\u0E31\u0E33-\u0E3A\u0E47-\u0E4E]+$/;
+function fixThaiSpans(root) {
+  root.querySelectorAll('.char:not(.th-ok)').forEach(span => {
+    span.classList.add('th-ok');
+    if (span.textContent && THAI_COMBINING.test(span.textContent)) { let prev = span.previousElementSibling; while (prev && (!prev.classList.contains('char') || prev.style.display === 'none')) prev = prev.previousElementSibling; if (prev) { prev.textContent += span.textContent; span.textContent = ''; span.style.display = 'none'; prev.style.setProperty('width', 'auto', 'important'); prev.style.setProperty('min-width', 'auto', 'important'); prev.style.setProperty('max-width', 'none', 'important'); prev.style.setProperty('overflow', 'visible', 'important'); prev.style.setProperty('white-space', 'pre', 'important'); } }
+  });
+}
+
+// CSS ที่ฉีดเข้า shadow DOM ของ <am-lyrics> เพื่อแก้บรรทัดถัดไปเลื่อนหลุดขึ้นไปบนสุด
+//  1) ตำแหน่งบรรทัดที่กำลังร้อง เดิมอยู่ 8-12% จากขอบบน ซึ่งตรงกับโซนที่ถูกมาสก์ให้จางหาย (ดู .lyrics-right) จึงมองไม่เห็น
+//  2) บรรทัดที่มีท่อนร้องประสาน เช่น "(สวัสดี)" จะกางความสูงออกทีหลัง ทำให้ระยะเลื่อนที่คำนวณไว้คลาดเคลื่อน จึงล็อกความสูงให้คงที่
+const LYRICS_SHADOW_CSS = `
+.lyrics-container { --lyrics-scroll-padding-top: 26% !important; }
+.background-vocal-container { height: auto !important; transition: none !important; }
+.background-vocal-wrap { opacity: .55 !important; transform: none !important; }
+.lyrics-line.bg-expanded .background-vocal-wrap { opacity: 1 !important; }
+.lyrics-line.bg-expanded.bg-after .main-vocal-container,
+.lyrics-line.bg-expanded.bg-before .main-vocal-container { transform: none !important; }
+`;
+
+function mountLyricsEl(container, attrs) {
+  container.innerHTML = '';
+  const el = document.createElement('am-lyrics');
+  Object.entries(attrs).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') el.setAttribute(k, String(v)); });
+  el.setAttribute('autoscroll', 'true'); el.setAttribute('interpolate', 'true'); el.setAttribute('font-family', "'Kanit', sans-serif");
+  container.appendChild(el);
+  const waitForShadow = setInterval(() => {
+    if (!el.isConnected) { clearInterval(waitForShadow); return; }
+    if (el.shadowRoot) { clearInterval(waitForShadow); const st = document.createElement('style'); st.textContent = LYRICS_SHADOW_CSS; el.shadowRoot.appendChild(st); fixThaiSpans(el.shadowRoot); new MutationObserver(() => fixThaiSpans(el.shadowRoot)).observe(el.shadowRoot, { childList: true, subtree: true }); }
+  }, 50);
+  return el;
+}
+
+// รอให้ <am-lyrics> โหลดเสร็จ แล้วบอกว่าได้เนื้อเพลงแบบไหน: 'synced' | 'unsynced' | 'none'
+function waitLyricsResult(el, timeoutMs = 12000) {
+  return new Promise(resolve => {
+    const start = Date.now(); let seenLoading = false;
+    const tick = () => {
+      if (!el.isConnected) return resolve('gone');
+      const loading = !!el.isLoading; if (loading) seenLoading = true;
+      const elapsed = Date.now() - start;
+      if ((seenLoading && !loading) || (!loading && elapsed > 3000) || elapsed > timeoutMs) {
+        const ls = el.lyrics;
+        if (!ls || !ls.length) return resolve('none');
+        return resolve(ls.every(l => l.timestamp === 0 && l.endtime === 0) ? 'unsynced' : 'synced');
+      }
+      setTimeout(tick, 300);
+    };
+    tick();
+  });
+}
+
+async function lrclibJson(path) {
+  try { const r = await fetch(`https://lrclib.net/api/${path}`); return r.ok ? await r.json() : null; } catch (e) { return null; }
+}
+
+// หาเนื้อเพลงซิงก์จาก LRCLIB ลองหลายรูปแบบชื่อ และเลือกเวอร์ชันที่ความยาวใกล้เคียงกับเพลงที่เล่นอยู่ (กันเวลาเพี้ยน)
+async function findSyncedLrc(track) {
+  const durSec = Math.round((track.duration_ms || 0) / 1000);
+  const artist = track.artists?.[0]?.name || '';
+  const album = track.album?.name || '';
+  const raw = track.name || '';
+  const titles = [...new Set([raw, raw.split(' - ')[0], raw.replace(/\s*[\(\[].*?[\)\]]/g, ''), raw.split(' - ')[0].split(' (')[0]].map(t => t.trim()).filter(Boolean))];
+  const seen = new Map();
+  const add = list => (Array.isArray(list) ? list : [list]).forEach(r => { if (r && r.syncedLyrics && !seen.has(r.id)) seen.set(r.id, r); });
+
+  for (const t of titles.slice(0, 2)) {
+    const p = new URLSearchParams({ track_name: t, artist_name: artist, album_name: album }); if (durSec) p.set('duration', durSec);
+    add(await lrclibJson(`get?${p}`));
+    if (seen.size) break;
+  }
+  if (!seen.size) {
+    for (const t of titles) {
+      add(await lrclibJson(`search?${new URLSearchParams({ track_name: t, artist_name: artist })}`));
+      if (seen.size) break;
+      add(await lrclibJson(`search?${new URLSearchParams({ q: `${artist} ${t}` })}`));
+      if (seen.size) break;
+    }
+  }
+  const cands = [...seen.values()];
+  if (!cands.length) return null;
+  if (!durSec) return cands[0];
+  const scored = cands.map(r => ({ r, diff: Math.abs((Number(r.duration) || 0) - durSec) })).sort((a, b) => a.diff - b.diff);
+  return scored[0].diff <= 5 ? scored[0].r : null; // ห่างเกิน 5 วินาที = คนละเวอร์ชัน เวลาจะเพี้ยน จึงไม่ใช้
+}
+
+// แปลง LRC ("[mm:ss.xx] ข้อความ") เป็น TTML ระดับบรรทัดที่ <am-lyrics> อ่านได้
+function lrcToTtml(lrc) {
+  const rows = [];
+  String(lrc).split(/\r?\n/).forEach(line => {
+    const text = line.replace(/\[[^\]]*\]/g, '').trim();
+    for (const m of line.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)) rows.push({ t: Number(m[1]) * 60 + parseFloat(m[2]), text });
+  });
+  rows.sort((a, b) => a.t - b.t);
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const ps = [];
+  rows.forEach((r, i) => {
+    if (!r.text) return;
+    const end = rows[i + 1] ? rows[i + 1].t : r.t + 5;
+    ps.push(`<p begin="${r.t.toFixed(2)}s" end="${Math.max(end, r.t + 0.5).toFixed(2)}s">${esc(r.text)}</p>`);
+  });
+  return ps.length ? `<?xml version="1.0" encoding="UTF-8"?><tt xmlns="http://www.w3.org/ns/ttml"><body><div>${ps.join('')}</div></body></tt>` : '';
+}
+
 async function setupLyricsComponent(track) {
   const container = document.getElementById('lyrics-container');
   container.innerHTML = '<div class="lyrics-loading"></div>';
-  let cleanTitle = track.name.split(' - ')[0].split(' (')[0];
+  const stale = () => !!currentTrackData && currentTrackData.id !== track.id;
+  const cleanTitle = track.name.split(' - ')[0].split(' (')[0];
   const primaryArtist = track.artists[0].name;
   const album = track.album.name;
   let isrc = '';
   try { const fullTrack = await fetchWebApi(`v1/tracks/${track.id}`); if (fullTrack?.external_ids?.isrc) isrc = fullTrack.external_ids.isrc; } catch (e) { }
-  if (currentTrackData && currentTrackData.id !== track.id) return;
-  container.innerHTML = '';
-  const lyricsEl = document.createElement('am-lyrics');
-  lyricsEl.setAttribute('song-title', cleanTitle); lyricsEl.setAttribute('song-artist', primaryArtist); lyricsEl.setAttribute('song-album', album);
-  if (isrc) lyricsEl.setAttribute('isrc', isrc);
-  lyricsEl.setAttribute('autoscroll', 'true'); lyricsEl.setAttribute('font-family', "'Kanit', sans-serif");
-  container.appendChild(lyricsEl);
-  const THAI_COMBINING = /^[\u0E31\u0E33-\u0E3A\u0E47-\u0E4E]+$/;
-  function fixThaiSpans(root) {
-    root.querySelectorAll('.char:not(.th-ok)').forEach(span => {
-      span.classList.add('th-ok');
-      if (span.textContent && THAI_COMBINING.test(span.textContent)) { let prev = span.previousElementSibling; while (prev && (!prev.classList.contains('char') || prev.style.display === 'none')) prev = prev.previousElementSibling; if (prev) { prev.textContent += span.textContent; span.textContent = ''; span.style.display = 'none'; prev.style.setProperty('width', 'auto', 'important'); prev.style.setProperty('min-width', 'auto', 'important'); prev.style.setProperty('max-width', 'none', 'important'); prev.style.setProperty('overflow', 'visible', 'important'); prev.style.setProperty('white-space', 'pre', 'important'); } }
-    });
-  }
-  const waitForShadow = setInterval(() => { if (lyricsEl.shadowRoot) { clearInterval(waitForShadow); fixThaiSpans(lyricsEl.shadowRoot); new MutationObserver(() => fixThaiSpans(lyricsEl.shadowRoot)).observe(lyricsEl.shadowRoot, { childList: true, subtree: true }); } }, 50);
+  if (stale()) return;
+
+  const lyricsEl = mountLyricsEl(container, {
+    'song-title': cleanTitle, 'song-artist': primaryArtist, 'song-album': album, 'song-duration': track.duration_ms,
+    query: `${cleanTitle} ${primaryArtist}`, isrc
+  });
+  syncLyricsTime();
+
+  const result = await waitLyricsResult(lyricsEl);
+  if (result === 'synced' || result === 'gone' || stale()) return;
+
+  // ได้แต่เนื้อเพลงเปล่า ๆ หรือไม่เจอ -> หาเวอร์ชันซิงก์เอง
+  const found = await findSyncedLrc(track);
+  if (!found || stale() || !container.contains(lyricsEl)) return;
+  const ttml = lrcToTtml(found.syncedLyrics);
+  if (!ttml) return;
+  mountLyricsEl(container, { 'song-title': cleanTitle, 'song-artist': primaryArtist, 'song-duration': track.duration_ms, ttml });
+  syncLyricsTime();
+}
+
+// ตั้งเวลาปัจจุบันให้ <am-lyrics> ที่เพิ่งสร้างใหม่ทันที ไม่ต้องรอ state ถัดไปจาก Spotify
+function syncLyricsTime() {
+  if (typeof seekState === 'undefined') return;
+  updateLyricsComponent(currentSeekPosition(), seekState.duration, seekState.paused);
 }
 
 // ============================================================
@@ -1064,10 +1184,32 @@ function setupContextMenu() {
   });
 }
 
+// ---------- Media Session ----------
+// ส่งชื่อเพลง/ศิลปิน/ปก/ปุ่มควบคุมให้ระบบปฏิบัติการ แสดงที่หน้าจอล็อก, Control Center, แจ้งเตือนสื่อของ Android
+// และ Dynamic Island ของ iPhone (เว็บวาดใน Dynamic Island เองไม่ได้ ต้องผ่านช่องทางนี้เท่านั้น)
+let _mediaSessionReady = false;
+function updateMediaSession(state) {
+  if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
+  const track = state?.track_window?.current_track; if (!track) return;
+  const artwork = (track.album?.images || []).map(i => ({ src: i.url, sizes: `${i.width || 300}x${i.height || 300}`, type: 'image/jpeg' }));
+  navigator.mediaSession.metadata = new MediaMetadata({ title: track.name, artist: track.artists.map(a => a.name).join(', '), album: track.album?.name || '', artwork });
+  navigator.mediaSession.playbackState = state.paused ? 'paused' : 'playing';
+  try { if (state.duration > 0) navigator.mediaSession.setPositionState({ duration: state.duration / 1000, playbackRate: 1, position: Math.min(state.position, state.duration) / 1000 }); } catch (e) { }
+  if (_mediaSessionReady) return;
+  _mediaSessionReady = true;
+  const on = (action, fn) => { try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) { } };
+  on('play', () => window._spotifyPlayer?.resume());
+  on('pause', () => window._spotifyPlayer?.pause());
+  on('previoustrack', previousTrack);
+  on('nexttrack', nextTrack);
+  on('seekto', d => { if (d && typeof d.seekTime === 'number') window._spotifyPlayer?.seek(Math.round(d.seekTime * 1000)); });
+}
+
 function handlePlayerStateChange(state) {
   if (!state) return;
   syncSeekFromState(state);
   updatePlayerUI(state);
+  updateMediaSession(state);
   const track = state.track_window.current_track;
   const lyricsContainer = document.getElementById('lyrics-container');
   const containerEmpty = !lyricsContainer || lyricsContainer.children.length === 0;
