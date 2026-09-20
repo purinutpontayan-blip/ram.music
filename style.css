@@ -1,1793 +1,235 @@
-:root {
-  --bg-dark: #0f0f11;
-  --bg-panel: rgba(25, 25, 30, 0.6);
-  --text-main: #ffffff;
-  --text-muted: #a0a0a5;
-  --accent: #1db954;
-  --accent-glow: rgba(29, 185, 84, 0.4);
-  --player-height: 90px;
-  --sidebar-width: 240px;
-  --glass-border: rgba(255, 255, 255, 0.05);
-}
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html {
-  overflow: hidden;
-  overscroll-behavior: none;
-}
-
-body {
-  font-family: 'Kanit', 'Outfit', sans-serif;
-  background-color: var(--bg-dark);
-  color: var(--text-main);
-  overflow: hidden;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-}
-
-.hidden {
-  display: none !important;
-}
-
-.screen {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-.glass-panel {
-  background: var(--bg-panel);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
-}
-
-#login-screen {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: radial-gradient(circle at center, #1a1a24 0%, var(--bg-dark) 100%);
-}
-
-.login-card {
-  padding: 3rem;
-  border-radius: 24px;
-  text-align: center;
-  max-width: 400px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-}
-
-.login-card h1 {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  background: linear-gradient(135deg, #fff, #a0a0a5);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.login-card p {
-  color: var(--text-muted);
-  margin-bottom: 2rem;
-  line-height: 1.5;
-}
-
-.btn-primary {
-  background-color: var(--accent);
-  color: #fff;
-  border: none;
-  padding: 1rem 2rem;
-  border-radius: 30px;
-  font-size: 1.1rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: transform .2s, box-shadow .2s, background-color .2s;
-  box-shadow: 0 4px 15px var(--accent-glow);
-}
-
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px var(--accent-glow);
-  background-color: #1ed760;
-}
-
-#app-screen {
-  overflow: hidden; /* ambient-background ใหญ่กว่าจอ (เพื่อขยับเลื่อนไหล) ต้องถูกตัด ไม่งั้นมือถือจะย่อหน้าเว็บให้พอดีกับส่วนที่ล้น */
-  isolation: isolate;
-  display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
-  grid-template-rows: 1fr var(--player-height);
-  grid-template-areas: "sidebar main" "player player";
-}
-
-@property --amb1 { syntax: '<color>'; inherits: false; initial-value: rgba(29, 185, 84, 0.4); }
-@property --amb2 { syntax: '<color>'; inherits: false; initial-value: rgba(29, 185, 84, 0); }
-@property --amb3 { syntax: '<color>'; inherits: false; initial-value: rgba(29, 185, 84, 0); }
-@property --amb4 { syntax: '<color>'; inherits: false; initial-value: rgba(29, 185, 84, 0); }
-@property --amb5 { syntax: '<color>'; inherits: false; initial-value: rgba(29, 185, 84, 0); }
-
-.ambient-background {
-  position: absolute;
-  top: -15%;
-  left: -15%;
-  width: 130%;
-  height: 130%;
-  background:
-    radial-gradient(ellipse at 20% 12%, var(--amb1) 0%, transparent 55%),
-    radial-gradient(ellipse at 85% 20%, var(--amb2) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 88%, var(--amb3) 0%, transparent 55%),
-    radial-gradient(ellipse at 15% 85%, var(--amb4) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 50%, var(--amb5) 0%, transparent 60%);
-  z-index: -1;
-  transition: --amb1 1.4s ease, --amb2 1.4s ease, --amb3 1.4s ease, --amb4 1.4s ease, --amb5 1.4s ease;
-  animation: ambient-drift 30s ease-in-out infinite alternate;
-  will-change: transform;
-}
-
-@keyframes ambient-drift {
-  0% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(3%, -2%) scale(1.06); }
-  100% { transform: translate(-3%, 3%) scale(1.02); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ambient-background, .blob { animation: none !important; }
-}
-
-.sidebar {
-  grid-area: sidebar;
-  display: flex;
-  flex-direction: column;
-  padding: 1.5rem;
-  border-right: 1px solid var(--glass-border);
-}
-
-.logo {
-  font-size: 1.5rem;
-  font-weight: 800;
-  margin-bottom: 2rem;
-  letter-spacing: 1px;
-}
-
-nav {
-  display: flex;
-  flex-direction: column;
-  gap: .5rem;
-  flex: 1;
-}
-
-.nav-item {
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: 1.1rem;
-  padding: .75rem 1rem;
-  border-radius: 12px;
-  transition: all .2s;
-  font-weight: 500;
-}
-
-.nav-item:hover,
-.nav-item.active {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, .05);
-}
-
-.user-profile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: auto;
-  padding-top: 1rem;
-  border-top: 1px solid var(--glass-border);
-}
-
-.user-profile img {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-}
-
-.user-profile-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 6px 8px;
-  background: transparent;
-  border: none;
-  border-radius: 12px;
-  color: var(--text-main);
-  font: inherit;
-  cursor: pointer;
-  text-align: left;
-  transition: background .2s;
-}
-
-.user-profile-btn:hover {
-  background: rgba(255, 255, 255, .08);
-}
-
-.user-profile-btn .user-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.user-profile-btn .user-chevron {
-  color: var(--text-muted);
-  font-size: .8rem;
-}
-
-.avatar-fallback {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.account-menu {
-  position: fixed;
-  z-index: 1500;
-  min-width: 210px;
-  background: rgba(30, 30, 35, .97);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  padding: .4rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
-}
-
-.account-menu-header {
-  padding: .6rem .9rem;
-  color: var(--text-muted);
-  font-size: .85rem;
-  border-bottom: 1px solid var(--glass-border);
-  margin-bottom: .3rem;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.account-menu-item {
-  display: block;
-  width: 100%;
-  padding: .7rem .9rem;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  color: var(--text-main);
-  font: inherit;
-  font-size: .95rem;
-  text-align: left;
-  cursor: pointer;
-  transition: background .2s;
-}
-
-.account-menu-item:hover {
-  background: rgba(255, 255, 255, .1);
-}
-
-.account-menu-item.danger {
-  color: #ff6b6b;
-}
-
-.main-content {
-  grid-area: main;
-  overflow-y: auto;
-  padding: 2rem;
-  position: relative;
-}
-
-.top-bar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  padding: 1rem;
-  border-radius: 100px;
-  margin-bottom: 2rem;
-  display: flex;
-}
-
-#search-input {
-  width: 100%;
-  background: transparent;
-  border: none;
-  color: var(--text-main);
-  font-family: inherit;
-  font-size: 1.1rem;
-  outline: none;
-  padding: .5rem 1rem;
-}
-
-#search-input::placeholder {
-  color: var(--text-muted);
-}
-
-.view {
-  display: none;
-}
-
-.view.active {
-  display: block;
-  animation: fadeIn .3s ease;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px)
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0)
-  }
-}
-
-h2 {
-  font-size: 2rem;
-  margin-bottom: 1.5rem;
-  font-weight: 700;
-}
-
-h3 {
-  font-size: 1.5rem;
-  margin-bottom: 1rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.search-section {
-  margin-bottom: 2rem;
-}
-
-.playlists-grid,
-.artists-grid,
-.albums-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1.5rem;
-  align-items: start;
-}
-
-.history-grid {
-  display: flex;
-  align-items: flex-start;
-  gap: 1.5rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: .75rem;
-  scroll-snap-type: x proximity;
-  -webkit-overflow-scrolling: touch;
-}
-
-.history-grid .history-card {
-  flex: 0 0 180px;
-  width: 180px;
-  max-width: 180px;
-  min-width: 0;
-  align-self: flex-start;
-  scroll-snap-align: start;
-  overflow: hidden;
-}
-
-.playlist-card,
-.track-item {
-  background: rgba(255, 255, 255, .02);
-  border-radius: 16px;
-  padding: 1rem;
-  transition: all .3s ease;
-  cursor: pointer;
-}
-
-.playlist-card:hover,
-.track-item:hover {
-  background: rgba(255, 255, 255, .08);
-  transform: translateY(-5px);
-}
-
-.playlist-card img {
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: 12px;
-  margin-bottom: 1rem;
-  object-fit: cover;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
-}
-
-.playlist-title {
-  font-weight: 600;
-  margin-bottom: .25rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.playlist-owner {
-  color: var(--text-muted);
-  font-size: .9rem;
-}
-
-.tracks-list {
-  display: flex;
-  flex-direction: column;
-  gap: .5rem;
-}
-
-.track-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: .75rem 1rem;
-  border-radius: 12px;
-  transform: none;
-}
-
-.track-item:hover {
-  transform: translateX(5px);
-}
-
-.track-item img {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-}
-
-.track-item-info {
-  flex: 1;
-  overflow: hidden;
-}
-
-.track-item-title {
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.track-item-artist {
-  color: var(--text-muted);
-  font-size: .9rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.player {
-  grid-area: player;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 2rem;
-  border-top: 1px solid var(--glass-border);
-  z-index: 20;
-}
-
-.track-info {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  width: 30%;
-}
-
-#player-art {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, .3);
-}
-
-.track-details {
-  display: flex;
-  flex-direction: column;
-}
-
-.track-title {
-  font-weight: 600;
-  font-size: 1.1rem;
-}
-
-.track-artist {
-  color: var(--text-muted);
-  font-size: .9rem;
-}
-
-.player-controls {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  flex: 1;
-  justify-content: center;
-}
-
-.btn-icon {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all .2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-icon:hover {
-  color: var(--text-main);
-  transform: scale(1.1);
-}
-
-.btn-icon svg {
-  width: 24px;
-  height: 24px;
-}
-
-.btn-play {
-  background: var(--text-main);
-  color: var(--bg-dark);
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-}
-
-.btn-play:hover {
-  transform: scale(1.05);
-  color: var(--bg-dark);
-  background: var(--accent);
-}
-
-.player-extra {
-  width: 30%;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.lyrics-btn {
-  background: rgba(255, 255, 255, .1);
-  padding: .5rem 1rem;
-  border-radius: 20px;
-  font-weight: 600;
-  font-size: .9rem;
-  color: var(--text-main);
-}
-
-.lyrics-btn:hover {
-  background: rgba(255, 255, 255, .2);
-}
-
-.lyrics-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: var(--bg-dark);
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  transition: transform .5s cubic-bezier(.2, .8, .2, 1), opacity .5s ease;
-}
-
-.lyrics-modal.hidden {
-  display: flex !important;
-  transform: translateY(100%);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.modal-blobs {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: .8;
-  will-change: transform;
-  transition: background-color 1.4s ease;
-}
-
-.blob-1 {
-  width: 60vw;
-  height: 60vw;
-  top: -15%;
-  left: -10%;
-  background: var(--blob1, rgba(80, 80, 200, .6));
-  animation: blob-move-1 14s ease-in-out infinite alternate;
-}
-
-.blob-2 {
-  width: 55vw;
-  height: 55vw;
-  bottom: -20%;
-  right: -10%;
-  background: var(--blob2, rgba(200, 80, 80, .5));
-  animation: blob-move-2 18s ease-in-out infinite alternate;
-}
-
-.blob-3 {
-  width: 40vw;
-  height: 40vw;
-  top: 30%;
-  left: 30%;
-  background: var(--blob3, rgba(80, 160, 100, .35));
-  animation: blob-move-3 22s ease-in-out infinite alternate;
-}
-
-.blob-4 {
-  width: 45vw;
-  height: 45vw;
-  top: -12%;
-  right: -8%;
-  background: var(--blob4, rgba(200, 160, 60, .5));
-  animation: blob-move-2 20s ease-in-out infinite alternate-reverse;
-}
-
-.blob-5 {
-  width: 50vw;
-  height: 50vw;
-  bottom: -15%;
-  left: -8%;
-  background: var(--blob5, rgba(60, 180, 180, .5));
-  animation: blob-move-1 24s ease-in-out infinite alternate-reverse;
-}
-
-@keyframes blob-move-1 {
-  0% {
-    transform: translate(0, 0) scale(1)
-  }
-
-  33% {
-    transform: translate(8%, 12%) scale(1.1)
-  }
-
-  66% {
-    transform: translate(-5%, 20%) scale(.95)
-  }
-
-  100% {
-    transform: translate(12%, 5%) scale(1.05)
-  }
-}
-
-@keyframes blob-move-2 {
-  0% {
-    transform: translate(0, 0) scale(1)
-  }
-
-  33% {
-    transform: translate(-10%, -8%) scale(1.08)
-  }
-
-  66% {
-    transform: translate(6%, -15%) scale(1.12)
-  }
-
-  100% {
-    transform: translate(-5%, 10%) scale(.95)
-  }
-}
-
-@keyframes blob-move-3 {
-  0% {
-    transform: translate(0, 0) scale(1)
-  }
-
-  50% {
-    transform: translate(-15%, 10%) scale(1.2)
-  }
-
-  100% {
-    transform: translate(10%, -12%) scale(.9)
-  }
-}
-
-.lyrics-modal>*:not(.modal-blobs) {
-  position: relative;
-  z-index: 1;
-}
-
-.lyrics-modal .lyrics-modal-btns {
-  position: absolute;
-  top: 2rem;
-  right: 2.5rem;
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  z-index: 60;
-}
-
-.btn-modal-icon {
-  background: rgba(255, 255, 255, .08);
-  border: 1px solid rgba(255, 255, 255, .12);
-  color: var(--text-muted);
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all .2s;
-  backdrop-filter: blur(8px);
-}
-
-.btn-modal-icon:hover {
-  background: rgba(255, 255, 255, .18);
-  color: var(--text-main);
-  transform: scale(1.1);
-}
-
-.btn-modal-icon svg {
-  width: 22px;
-  height: 22px;
-}
-
-.lyrics-layout {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  padding: 4rem;
-  gap: 4rem;
-  align-items: center;
-}
-
-.lyrics-left {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  max-width: 500px;
-  margin-left: auto;
-}
-
-.lyrics-left img {
-  width: min(100%, 45vh);
-  aspect-ratio: 1;
-  border-radius: 12px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, .5);
-  margin-bottom: 3rem;
-  object-fit: cover;
-}
-
-.lyrics-track-details {
-  margin-bottom: 2rem;
-  width: 100%;
-}
-
-.lyrics-track-title {
-  font-size: 2.5rem;
-  font-weight: 700;
-  margin-bottom: .5rem;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  width: 100%;
-}
-
-.lyrics-track-title .marquee-inner {
-  display: inline-block;
-  white-space: nowrap;
-}
-
-.lyrics-track-title.is-overflow .marquee-inner {
-  animation: marquee-scroll 30s linear infinite;
-  padding-right: 3rem;
-}
-
-@keyframes marquee-scroll {
-  0% {
-    transform: translateX(0)
-  }
-
-  100% {
-    transform: translateX(-50%)
-  }
-}
-
-.lyrics-track-artist {
-  font-size: 1.4rem;
-  color: rgba(255, 255, 255, .72);
-}
-
-.lyrics-controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3rem;
-  width: 100%;
-}
-
-/* ปุ่มในหน้าเนื้อเพลง: ขาวชัดบนพื้นหลังสีอะไรก็ได้ และขนาดสมดุลกับปุ่มเล่น/หยุด */
-.lyrics-controls .btn-icon {
-  color: rgba(255, 255, 255, .9);
-}
-
-.lyrics-controls .btn-icon:hover {
-  color: #fff;
-}
-
-.lyrics-controls .btn-icon svg {
-  width: 34px;
-  height: 34px;
-  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, .25));
-}
-
-.lyrics-controls .btn-play {
-  width: 64px;
-  height: 64px;
-  color: #111;
-  background: #fff;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, .3);
-}
-
-.lyrics-controls .btn-play:hover {
-  background: #fff;
-  color: #111;
-  transform: scale(1.06);
-}
-
-.lyrics-controls .btn-play svg {
-  width: 30px;
-  height: 30px;
-  filter: none;
-}
-
-.lyrics-right {
-  flex: 1.2;
-  display: flex;
-  flex-direction: column;
-  height: 90%;
-  margin-right: auto;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
-  mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
-}
-
-.lyrics-container {
-  width: 100%;
-  height: 100%;
-  display: flex;
-}
-
-am-lyrics {
-  width: 100%;
-  height: 100%;
-  max-width: 800px;
-  --am-lyrics-color-active: var(--text-main);
-  --am-lyrics-color-inactive: rgba(255, 255, 255, .4);
-  text-align: left;
-  pointer-events: none;
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, .2);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, .4);
-}
-
-.context-menu {
-  position: absolute;
-  background: rgba(30, 30, 35, .95);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  padding: .5rem 0;
-  min-width: 200px;
-  z-index: 1000;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
-}
-
-.context-menu.hidden {
-  display: none;
-}
-
-.menu-item {
-  padding: .75rem 1.5rem;
-  cursor: pointer;
-  transition: background .2s;
-  color: var(--text-main);
-  font-size: .95rem;
-}
-
-.menu-item:hover {
-  background: rgba(255, 255, 255, .1);
-}
-
-.playlist-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, .7);
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.playlist-modal.hidden {
-  display: none;
-}
-
-.playlist-modal-content {
-  width: 400px;
-  max-width: 90%;
-  padding: 2rem;
-  border-radius: 16px;
-  display: flex;
-  flex-direction: column;
-  max-height: 80vh;
-}
-
-.playlist-list {
-  flex: 1;
-  overflow-y: auto;
-  margin: 1rem 0;
-  display: flex;
-  flex-direction: column;
-  gap: .5rem;
-}
-
-.playlist-list-item {
-  padding: .75rem;
-  background: rgba(255, 255, 255, .05);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background .2s;
-}
-
-.playlist-list-item:hover {
-  background: rgba(255, 255, 255, .1);
-}
-
-.btn-close-playlist {
-  background: rgba(255, 255, 255, .1);
-  color: var(--text-main);
-  border: none;
-  padding: .75rem;
-  border-radius: 12px;
-  cursor: pointer;
-}
-
-.btn-close-playlist:hover {
-  background: rgba(255, 255, 255, .2);
-}
-
-.toast-container {
-  position: fixed;
-  bottom: 100px;
-  right: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  z-index: 9999;
-}
-
-.toast {
-  background: var(--bg-panel);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--glass-border);
-  color: var(--text-main);
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: .95rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, .3);
-  opacity: 0;
-  transform: translateY(20px);
-  transition: all .3s ease;
-}
-
-.toast-error {
-  border-left: 4px solid #e74c3c;
-}
-
-.toast-info {
-  border-left: 4px solid var(--accent);
-}
-
-/* ============ Seek bar (แถบเลือกจุดเพลง) ============ */
-.player-center {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: .35rem;
-}
-
-.player-center .player-controls {
-  flex: none;
-}
-
-.seek-row {
-  display: flex;
-  align-items: center;
-  gap: .6rem;
-  width: 100%;
-}
-
-.seek-row-mini {
-  max-width: 520px;
-}
-
-.seek-time {
-  font-size: .75rem;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  min-width: 2.6rem;
-  user-select: none;
-}
-
-.seek-remaining {
-  text-align: right;
-}
-
-.seek-bar {
-  --track-h: 6px;
-  --thumb: 12px;
-  --pct: 0%;
-  --seek-fill: #fff;
-  --seek-track: rgba(255, 255, 255, .25);
-  -webkit-appearance: none;
-  appearance: none;
-  flex: 1;
-  min-width: 0;
-  height: 22px;
-  margin: 0;
-  background: transparent;
-  cursor: pointer;
-  outline: none;
-}
-
-.seek-bar:disabled {
-  cursor: default;
-  opacity: .6;
-}
-
-.seek-bar::-webkit-slider-runnable-track {
-  height: var(--track-h);
-  border-radius: 999px;
-  background: linear-gradient(to right, var(--seek-fill) var(--pct), var(--seek-track) var(--pct));
-}
-
-.seek-bar::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: var(--thumb);
-  height: var(--thumb);
-  margin-top: calc((var(--track-h) - var(--thumb)) / 2);
-  border-radius: 50%;
-  border: none;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, .5);
-  opacity: 0;
-  transition: opacity .15s;
-}
-
-.seek-bar::-moz-range-track {
-  height: var(--track-h);
-  border-radius: 999px;
-  background: var(--seek-track);
-}
-
-.seek-bar::-moz-range-progress {
-  height: var(--track-h);
-  border-radius: 999px;
-  background: var(--seek-fill);
-}
-
-.seek-bar::-moz-range-thumb {
-  width: var(--thumb);
-  height: var(--thumb);
-  border: none;
-  border-radius: 50%;
-  background: #fff;
-  opacity: 0;
-  transition: opacity .15s;
-}
-
-.seek-bar:hover:not(:disabled)::-webkit-slider-thumb,
-.seek-bar:active::-webkit-slider-thumb,
-.seek-bar:focus-visible::-webkit-slider-thumb {
-  opacity: 1;
-}
-
-.seek-bar:hover:not(:disabled)::-moz-range-thumb,
-.seek-bar:active::-moz-range-thumb,
-.seek-bar:focus-visible::-moz-range-thumb {
-  opacity: 1;
-}
-
-.player .seek-bar:hover:not(:disabled) {
-  --seek-fill: var(--accent);
-}
-
-/* แถบในหน้าเนื้อเพลง: แถบอยู่บน เวลาอยู่ใต้ปลายซ้าย/ขวา (สไตล์ Apple Music) */
-.seek-row-lyrics {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  row-gap: .1rem;
-  margin-bottom: 1.5rem;
-}
-
-.seek-row-lyrics .seek-bar {
-  --track-h: 8px;
-  --thumb: 16px;
-  grid-column: 1 / -1;
-  grid-row: 1;
-  width: 100%;
-}
-
-.seek-row-lyrics .seek-current {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.seek-row-lyrics .seek-remaining {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-.seek-row-lyrics .seek-time {
-  font-size: .85rem;
-  color: rgba(255, 255, 255, .55);
-}
-
-@media (max-width:768px) {
-  #app-screen {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 1fr var(--player-height) 60px;
-    grid-template-areas: "main" "player" "sidebar";
-  }
-
-  .sidebar {
-    flex-direction: row;
-    padding: 0;
-    border-right: none;
-    border-top: 1px solid var(--glass-border);
-    height: 60px;
-    background: var(--bg-dark);
-    z-index: 30;
-  }
-
-  .sidebar .logo {
-    display: none;
-  }
-
-  /* มือถือ: แสดงเฉพาะรูปโปรไฟล์ในแถบล่าง เพื่อเข้าเมนูสลับบัญชี/ออกจากระบบ */
-  .sidebar {
-    align-items: center;
-  }
-
-  .sidebar .user-profile {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0;
-    padding: 0 12px;
-    border-top: none;
-    width: auto;
-  }
-
-  .sidebar .user-profile .user-profile-btn {
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    justify-content: center;
-    border-radius: 50%;
-  }
-
-  .sidebar .user-profile img,
-  .sidebar .user-profile .avatar-fallback {
-    width: 34px;
-    height: 34px;
-    flex-shrink: 0;
-    border: 2px solid var(--accent);
-  }
-
-  .sidebar .user-profile .user-name,
-  .sidebar .user-profile .user-chevron {
-    display: none;
-  }
-
-  .sidebar nav {
-    flex: 1;
-    min-width: 0;
-    flex-direction: row;
-    justify-content: space-around;
-    align-items: center;
-  }
-
-  .account-menu {
-    min-width: 200px;
-  }
-
-  .nav-item {
-    font-size: 1rem;
-    padding: .5rem;
-    flex: 1;
-    text-align: center;
-    border-radius: 0;
-  }
-
-  .nav-item.active {
-    background: transparent;
-    color: var(--accent);
-    font-weight: 700;
-  }
-
-  .main-content {
-    padding: 1rem;
-  }
-
-  .playlists-grid,
-  .artists-grid,
-  .albums-grid {
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-    gap: 1rem;
-  }
-
-  .history-grid {
-    gap: 1rem;
-  }
-
-  .history-grid .history-card {
-    flex-basis: 130px;
-  }
-
-  .login-card {
-    padding: 2rem;
-    width: 90%;
-  }
-
-  .player {
-    padding: 0 1rem;
-    gap: .5rem;
-  }
-
-  .track-info {
-    width: auto;
-    flex: 1;
-    overflow: hidden;
-  }
-
-  .track-title,
-  .track-artist {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .player-controls {
-    width: auto;
-    flex: none;
-    gap: .5rem;
-  }
-
-  .player-extra {
-    width: auto;
-    flex: none;
-  }
-
-  .btn-icon svg {
-    width: 20px;
-    height: 20px;
-  }
-
-  .btn-play {
-    width: 36px;
-    height: 36px;
-  }
-
-  .lyrics-btn {
-    padding: .4rem .8rem;
-    font-size: .8rem;
-  }
-
-  /* ===== หน้าเนื้อเพลงบนมือถือ (สไตล์ Apple Music) =====
-     บน: ปกเล็ก + ชื่อเพลง/ศิลปิน | กลาง: เนื้อเพลงชิดซ้าย | ล่าง: แถบเวลา + ปุ่มควบคุมใหญ่ */
-  .lyrics-modal {
-    height: 100dvh;
-  }
-
-  .lyrics-modal .lyrics-modal-btns {
-    top: calc(env(safe-area-inset-top, 0px) + 1.4rem);
-    right: 1.25rem;
-    gap: .4rem;
-  }
-
-  .btn-modal-icon {
-    width: 40px;
-    height: 40px;
-  }
-
-  .lyrics-layout {
-    display: grid;
-    grid-template-columns: 84px minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
-    grid-template-areas:
-      "art details"
-      "lyrics lyrics"
-      "seek seek"
-      "controls controls";
-    column-gap: 1rem;
-    row-gap: 0;
-    align-items: center;
-    justify-content: stretch;
-    height: 100%;
-    padding: calc(env(safe-area-inset-top, 0px) + 1.25rem) 1.5rem calc(env(safe-area-inset-bottom, 0px) + 1.5rem);
-    overflow: hidden;
-  }
-
-  .lyrics-left {
-    display: contents;
-  }
-
-  .lyrics-left img {
-    grid-area: art;
-    width: 84px;
-    height: 84px;
-    max-width: none;
-    margin: 0;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, .15);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, .4);
-  }
-
-  .lyrics-track-details {
-    grid-area: details;
-    min-width: 0;
-    margin: 0;
-    padding-right: 5.6rem;
-    text-align: left;
-  }
-
-  .lyrics-track-title {
-    font-size: 1.2rem;
-    font-weight: 500;
-    margin-bottom: .1rem;
-  }
-
-  .lyrics-track-artist {
-    font-size: 1rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .lyrics-right {
-    grid-area: lyrics;
-    align-self: stretch;
-    position: relative;
-    flex: none;
-    height: auto;
-    min-height: 0;
-    width: 100%;
-    margin: 1.25rem 0 .75rem;
-  }
-
-  .lyrics-container {
-    position: absolute;
-    inset: 0;
-    height: auto;
-  }
-
-  am-lyrics {
-    text-align: left;
-    max-width: none;
-    --am-lyrics-compact-font-size: 32px;
-    --am-lyrics-compact-line-spacing: 26px;
-    --am-lyrics-compact-selected-position: 8%;
-    --am-lyrics-color-inactive: rgba(255, 255, 255, .35);
-  }
-
-  .seek-row-lyrics {
-    grid-area: seek;
-    margin-bottom: 1.25rem;
-  }
-
-  .lyrics-controls {
-    grid-area: controls;
-    justify-content: space-around;
-    padding: 0 1rem;
-  }
-
-  .lyrics-controls .btn-icon {
-    color: #fff;
-  }
-
-  .lyrics-controls .btn-icon svg {
-    width: 48px;
-    height: 48px;
-  }
-
-  .lyrics-controls .btn-play,
-  .lyrics-controls .btn-play:hover {
-    width: 72px;
-    height: 72px;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    color: #fff;
-  }
-
-  .lyrics-controls .btn-play svg {
-    width: 64px;
-    height: 64px;
-  }
-
-  /* Player ย่อด้านล่างบนมือถือ: แถบเวลาบางๆ ติดขอบบน */
-  .player {
-    position: relative;
-  }
-
-  .player-center {
-    flex: none;
-    width: auto;
-  }
-
-  .seek-row-mini {
-    position: absolute;
-    top: -10px;
-    left: 0;
-    right: 0;
-    width: 100%;
-    max-width: none;
-    gap: 0;
-  }
-
-  .seek-row-mini .seek-time {
-    display: none;
-  }
-
-  .seek-row-mini .seek-bar {
-    --track-h: 3px;
-    --thumb: 12px;
-    height: 20px;
-  }
-
-  .seek-row-mini .seek-bar::-webkit-slider-runnable-track {
-    border-radius: 0;
-  }
-
-  .playlist-modal-content {
-    width: 90%;
-    padding: 1.5rem;
-  }
-}
-
-/* ============================================================
-   RANKING — จัดอันดับเพลง
-   ============================================================ */
-.rank-header { margin-bottom: 1.25rem; }
-.rank-sub { color: var(--text-muted); font-size: .95rem; line-height: 1.5; margin-top: .25rem; }
-
-.rank-search {
-  border-radius: 100px;
-  padding: .75rem 1rem;
-  margin-bottom: 1rem;
-  display: flex;
-}
-#ranking-search-input {
-  width: 100%;
-  background: transparent;
-  border: none;
-  color: var(--text-main);
-  font-family: inherit;
-  font-size: 1.05rem;
-  outline: none;
-  padding: .25rem 1rem;
-}
-#ranking-search-input::placeholder { color: var(--text-muted); }
-
-.rank-search-results { margin-bottom: 1.5rem; }
-.rank-search-results:empty { display: none; }
-
-.rank-add-btn,
-.rank-vote-btn,
-.rank-refresh {
-  font-family: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  border-radius: 999px;
-  white-space: nowrap;
-  transition: transform .2s, background-color .2s, opacity .2s;
-}
-.rank-add-btn {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  padding: .5rem 1rem;
-  font-size: .85rem;
-}
-.rank-add-btn:hover { background: #1ed760; transform: translateY(-1px); }
-
-.rank-list-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 1.5rem 0 .75rem;
-}
-.rank-list-head h3 { margin: 0; }
-.rank-refresh {
-  background: rgba(255, 255, 255, .08);
-  color: var(--text-main);
-  border: 1px solid var(--glass-border);
-  padding: .4rem 1rem;
-  font-size: .85rem;
-}
-.rank-refresh:hover { background: rgba(255, 255, 255, .16); }
-
-.rank-list { display: flex; flex-direction: column; gap: .5rem; }
-
-.rank-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: .75rem 1rem;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, .03);
-  border: 1px solid var(--glass-border);
-  cursor: pointer;
-  transition: background .25s, transform .25s;
-}
-.rank-item:hover { background: rgba(255, 255, 255, .08); transform: translateX(4px); }
-
-.rank-num {
-  width: 2.2rem;
-  text-align: center;
-  font-family: 'Outfit', sans-serif;
-  font-size: 1.4rem;
-  font-weight: 800;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-.rank-item.top-1 { background: linear-gradient(90deg, rgba(255, 200, 60, .16), rgba(255, 255, 255, .03)); border-color: rgba(255, 200, 60, .35); }
-.rank-item.top-2 { background: linear-gradient(90deg, rgba(200, 210, 225, .13), rgba(255, 255, 255, .03)); border-color: rgba(200, 210, 225, .3); }
-.rank-item.top-3 { background: linear-gradient(90deg, rgba(210, 130, 70, .15), rgba(255, 255, 255, .03)); border-color: rgba(210, 130, 70, .3); }
-.rank-item.top-1 .rank-num { color: #ffc83c; font-size: 1.7rem; }
-.rank-item.top-2 .rank-num { color: #d0d8e6; }
-.rank-item.top-3 .rank-num { color: #d98a4e; }
-
-.rank-cover {
-  width: 52px;
-  height: 52px;
-  border-radius: 8px;
-  object-fit: cover;
-  flex-shrink: 0;
-  background: rgba(255, 255, 255, .08);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .4);
-}
-.rank-cover.is-broken { visibility: hidden; }
-
-.rank-info { flex: 1; min-width: 0; }
-.rank-title, .rank-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rank-title { font-weight: 600; }
-.rank-artist { color: var(--text-muted); font-size: .9rem; }
-
-.rank-duration { color: var(--text-muted); font-size: .9rem; font-variant-numeric: tabular-nums; flex-shrink: 0; }
-
-.rank-votes { display: flex; flex-direction: column; align-items: center; min-width: 3.2rem; flex-shrink: 0; line-height: 1.1; }
-.rank-votes strong { font-family: 'Outfit', sans-serif; font-size: 1.3rem; color: var(--accent); }
-.rank-votes span { font-size: .7rem; color: var(--text-muted); }
-
-.rank-vote-btn {
-  background: rgba(29, 185, 84, .15);
-  color: var(--accent);
-  border: 1px solid rgba(29, 185, 84, .4);
-  padding: .45rem .9rem;
-  font-size: .85rem;
-  flex-shrink: 0;
-}
-.rank-vote-btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
-.rank-vote-btn:disabled { opacity: .55; cursor: default; }
-.is-busy .rank-vote-btn,
-.is-busy .rank-add-btn { pointer-events: none; opacity: .6; }
-
-.rank-empty {
-  color: var(--text-muted);
-  text-align: center;
-  padding: 2rem 1rem;
-  border: 1px dashed var(--glass-border);
-  border-radius: 14px;
-  line-height: 1.6;
-}
-
-/* Modal ส่งเพลงเข้าอันดับ */
-.rk-modal { gap: .75rem; overflow-y: auto; }
-.rk-preview { display: flex; align-items: center; gap: 1rem; margin: .5rem 0; }
-.rk-preview img {
-  width: 96px;
-  height: 96px;
-  border-radius: 12px;
-  object-fit: cover;
-  flex-shrink: 0;
-  background: rgba(255, 255, 255, .08);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
-}
-.rk-preview-info { min-width: 0; }
-.rk-title { font-weight: 700; font-size: 1.1rem; }
-.rk-artist { color: var(--text-muted); margin-top: .15rem; }
-.rk-duration { color: var(--accent); font-size: .9rem; margin-top: .4rem; }
-.rk-file {
-  display: block;
-  padding: .75rem 1rem;
-  border: 1px dashed var(--glass-border);
-  border-radius: 12px;
-  color: var(--text-muted);
-  font-size: .9rem;
-  cursor: pointer;
-  text-align: center;
-  transition: background .2s, color .2s;
-}
-.rk-file:hover { background: rgba(255, 255, 255, .06); color: var(--text-main); }
-.rk-file input { display: none; }
-.rk-hint { color: var(--text-muted); font-size: .8rem; line-height: 1.4; }
-.rk-link {
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-family: inherit;
-  font-size: .85rem;
-  cursor: pointer;
-  text-align: left;
-  padding: 0;
-}
-.rk-actions { display: flex; gap: .75rem; margin-top: .5rem; }
-.rk-actions .btn-close-playlist { flex: 1; font-family: inherit; }
-.rk-actions .btn-primary { flex: 2; padding: .75rem 1.25rem; font-size: 1rem; }
-.rk-actions .btn-primary:disabled { opacity: .6; cursor: default; transform: none; }
-
-@media (max-width:768px) {
-  .rank-item { gap: .6rem; padding: .6rem .7rem; }
-  .rank-num { width: 1.6rem; font-size: 1.15rem; }
-  .rank-item.top-1 .rank-num { font-size: 1.3rem; }
-  .rank-cover { width: 44px; height: 44px; }
-  .rank-duration { display: none; }
-  .rank-vote-btn { padding: .4rem .65rem; font-size: .78rem; }
-  .rank-add-btn { padding: .45rem .75rem; font-size: .78rem; }
-  .rank-search-results .rank-duration { display: none; }
-}
-
-/* สัญลักษณ์ E (Explicit) */
-.rank-explicit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.05rem;
-  height: 1.05rem;
-  margin-right: .4rem;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, .55);
-  color: #111;
-  font-size: .68rem;
-  font-weight: 700;
-  line-height: 1;
-  vertical-align: middle;
-  flex-shrink: 0;
-}
-
-/* ============================================================
-   RANKING — เลือกหัวข้อ (topics)
-   ============================================================ */
-.rank-topics { margin-bottom: 1.25rem; }
-.rank-topic-chips {
-  display: flex;
-  gap: .5rem;
-  overflow-x: auto;
-  padding-bottom: .35rem;
-  scrollbar-width: thin;
-}
-.rank-topic-chip {
-  flex-shrink: 0;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font: inherit;
-  font-size: .9rem;
-  font-weight: 500;
-  color: var(--text-main);
-  background: rgba(255, 255, 255, .08);
-  border: 1px solid var(--glass-border);
-  border-radius: 999px;
-  padding: .45rem 1rem;
-  cursor: pointer;
-  transition: background .2s, transform .2s;
-}
-.rank-topic-chip:hover { background: rgba(255, 255, 255, .16); transform: translateY(-1px); }
-.rank-topic-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.rank-topic-chip.closed:not(.active) { color: var(--text-muted); }
-.rank-topic-info { display: flex; align-items: center; gap: .9rem; margin-top: .6rem; }
-.rank-topic-info.hidden { display: none; }
-.rank-topic-cover { width: 200px; height: 200px; border-radius: 16px; object-fit: cover; flex-shrink: 0; background: rgba(255, 255, 255, .08); box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
-.rank-topic-info { gap: 1.5rem; }
-.rank-topic-desc { font-size: 1.05rem; }
-@media (max-width: 768px) {
-  .rank-topic-cover { width: 120px; height: 120px; border-radius: 12px; }
-  .rank-topic-info { gap: 1rem; }
-}
-.rank-topic-desc { color: var(--text-muted); font-size: .92rem; line-height: 1.5; }
-.rank-topic-desc.hidden { display: none; }
-
-/* ============================================================
-   RANKING — แสดงเป็นการ์ดปก (grid) เหมือนอัลบัม
-   ============================================================ */
-.rank-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1.5rem;
-  align-items: start;
-}
-.rank-list > .rank-empty { grid-column: 1 / -1; }
-.rank-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid transparent; }
-.rank-card-cover { position: relative; }
-.rank-card-cover img.is-broken { visibility: hidden; }
-.rank-badge {
-  position: absolute;
-  top: .55rem;
-  left: .55rem;
-  min-width: 2rem;
-  height: 2rem;
-  padding: 0 .5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: rgba(15, 15, 17, .78);
-  backdrop-filter: blur(6px);
-  color: #fff;
-  font-weight: 700;
-  font-size: .95rem;
-}
-.rank-card.top-1 { border-color: rgba(255, 200, 60, .45); background: linear-gradient(180deg, rgba(255, 200, 60, .12), rgba(255, 255, 255, .02)); }
-.rank-card.top-2 { border-color: rgba(200, 210, 225, .35); background: linear-gradient(180deg, rgba(200, 210, 225, .10), rgba(255, 255, 255, .02)); }
-.rank-card.top-3 { border-color: rgba(210, 130, 70, .35); background: linear-gradient(180deg, rgba(210, 130, 70, .12), rgba(255, 255, 255, .02)); }
-.rank-card.top-1 .rank-badge { background: #ffc83c; color: #1a1a1a; }
-.rank-card.top-2 .rank-badge { background: #d0d8e6; color: #1a1a1a; }
-.rank-card.top-3 .rank-badge { background: #d98a4e; color: #1a1a1a; }
-.rank-card-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rank-card-meta { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: .6rem 0; color: var(--text-muted); font-size: .85rem; }
-.rank-card-meta .rank-votes { display: flex; align-items: baseline; gap: .3rem; }
-.rank-card-meta .rank-votes strong { color: var(--accent); font-size: 1.15rem; }
-.rank-card .rank-vote-btn { width: 100%; margin-top: auto; }
-@media (max-width: 768px) {
-  .rank-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-}
+<!doctype html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>R Music</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <!-- Login Screen -->
+  <div id="login-screen" class="screen">
+    <div class="login-card glass-panel">
+      <h1>R Music</h1>
+      <p>Log in with your Spotify Premium account to experience the music.</p>
+      <button id="login-button" class="btn-primary">Connect with Spotify</button>
+    </div>
+  </div>
+
+  <!-- Main App Layout -->
+  <div id="app-screen" class="screen hidden">
+    <div class="ambient-background" id="ambient-bg"></div>
+    <aside class="sidebar glass-panel">
+      <div class="logo">R Music</div>
+      <nav>
+        <a href="#" class="nav-item active" data-target="home">Home</a>
+        <a href="#" class="nav-item" data-target="search">Search</a>
+        <a href="#" class="nav-item" data-target="ranking">Ranking</a>
+      </nav>
+      <div class="user-profile" id="user-profile"></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="top-bar glass-panel hidden" id="search-bar-container">
+        <input type="text" id="search-input" placeholder="Search for songs, artists, albums..." />
+      </header>
+
+      <div class="view active" id="view-home">
+        <h2>ประวัติการฟัง</h2>
+        <div class="history-grid" id="history-grid"></div>
+      </div>
+
+      <div class="view" id="view-search">
+        <h2>Search Results</h2>
+        <div class="search-section">
+          <h3>Artists</h3>
+          <div class="artists-grid" id="search-artists"></div>
+        </div>
+        <div class="search-section">
+          <h3>Albums</h3>
+          <div class="albums-grid" id="search-albums"></div>
+        </div>
+        <div class="search-section">
+          <h3>Tracks</h3>
+          <div class="tracks-list" id="search-results"></div>
+        </div>
+      </div>
+
+      <div class="view" id="view-ranking">
+        <div class="rank-header">
+          <h2>🏆 จัดอันดับเพลง</h2>
+          <p class="rank-sub">เลือกหัวข้อที่สนใจ แล้วค้นหาเพลงส่งเข้าอันดับ ถ้ามีคนส่งเพลงเดียวกัน คะแนนจะรวมกัน (1 คนโหวตได้ 1 ครั้งต่อเพลงในแต่ละหัวข้อ) แสดง TOP 20 ของแต่ละหัวข้อ</p>
+        </div>
+        <div class="rank-search glass-panel">
+          <input type="text" id="ranking-search-input" placeholder="ค้นหาเพลงที่ต้องการส่งเข้าอันดับ..." autocomplete="off" />
+        </div>
+        <div class="tracks-list rank-search-results" id="ranking-search-results"></div>
+        <div class="rank-list-head">
+          <h3 id="ranking-list-title">อันดับปัจจุบัน</h3>
+          <button type="button" id="btn-ranking-refresh" class="rank-refresh">รีเฟรช</button>
+        </div>
+        <div class="rank-list" id="ranking-list"></div>
+      </div>
+
+      <div class="view" id="view-artist">
+        <div class="artist-header" id="artist-header"></div>
+        <h3>Top Tracks</h3>
+        <div class="tracks-list" id="artist-top-tracks"></div>
+        <h3>Albums</h3>
+        <div class="albums-grid" id="artist-albums"></div>
+      </div>
+
+      <div class="view" id="view-album">
+        <div class="artist-header" id="album-header"></div>
+        <div class="tracks-list" id="album-tracks"></div>
+      </div>
+    </main>
+
+    <!-- Bottom Player -->
+    <div id="player-screen" class="player glass-panel hidden">
+      <div class="track-info">
+        <img id="player-art" src="" alt="Album Art" class="hidden" />
+        <div class="track-details">
+          <div id="player-title" class="track-title"></div>
+          <div id="player-artist" class="track-artist"></div>
+        </div>
+      </div>
+      <div class="player-center">
+        <div class="player-controls">
+          <button id="btn-prev" class="btn-icon"><svg viewBox="0 0 24 24">
+              <path fill="currentColor" d="M6,18V6H8V18H6M9.5,12L18,6V18L9.5,12Z" />
+            </svg></button>
+          <button id="btn-play-pause" class="btn-icon btn-play">
+            <svg id="icon-play" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z" />
+            </svg>
+            <svg id="icon-pause" class="hidden" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M14,19H18V5H14M6,19H10V5H6V19Z" />
+            </svg>
+          </button>
+          <button id="btn-next" class="btn-icon"><svg viewBox="0 0 24 24">
+              <path fill="currentColor" d="M16,18H18V6H16M6,18L14.5,12L6,6V18Z" />
+            </svg></button>
+        </div>
+        <div class="seek-row seek-row-mini">
+          <span class="seek-time seek-current">0:00</span>
+          <input type="range" class="seek-bar" min="0" max="1000" step="1" value="0" disabled aria-label="เลือกจุดเพลง">
+          <span class="seek-time seek-remaining">-0:00</span>
+        </div>
+      </div>
+      <div class="player-extra">
+        <button id="btn-lyrics-toggle" class="btn-icon lyrics-btn">Lyrics</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lyrics Modal -->
+  <div id="lyrics-modal" class="lyrics-modal hidden">
+    <div class="lyrics-modal-btns">
+      <button id="btn-fullscreen-lyrics" class="btn-modal-icon" title="เต็มหน้าจอ">
+        <svg id="icon-fullscreen-enter" viewBox="0 0 24 24">
+          <path fill="currentColor"
+            d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+        </svg>
+        <svg id="icon-fullscreen-exit" class="hidden" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+        </svg>
+      </button>
+      <button id="btn-close-lyrics" class="btn-modal-icon">
+        <svg viewBox="0 0 24 24">
+          <path fill="currentColor" d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z" />
+        </svg>
+      </button>
+    </div>
+    <div class="lyrics-layout">
+      <div class="lyrics-left">
+        <img id="lyrics-modal-art" src="" alt="Album Art" />
+        <div class="lyrics-track-details">
+          <div id="lyrics-modal-title" class="lyrics-track-title"></div>
+          <div id="lyrics-modal-artist" class="lyrics-track-artist"></div>
+        </div>
+        <div class="seek-row seek-row-lyrics">
+          <span class="seek-time seek-current">0:00</span>
+          <input type="range" class="seek-bar" min="0" max="1000" step="1" value="0" disabled aria-label="เลือกจุดเพลง">
+          <span class="seek-time seek-remaining">-0:00</span>
+        </div>
+        <div class="lyrics-controls">
+          <button id="btn-lyrics-prev" class="btn-icon"><svg viewBox="0 0 24 24">
+              <path fill="currentColor" d="M6,18V6H8V18H6M9.5,12L18,6V18L9.5,12Z" />
+            </svg></button>
+          <button id="btn-lyrics-play-pause" class="btn-icon btn-play">
+            <svg id="lyrics-icon-play" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z" />
+            </svg>
+            <svg id="lyrics-icon-pause" class="hidden" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M14,19H18V5H14M6,19H10V5H6V19Z" />
+            </svg>
+          </button>
+          <button id="btn-lyrics-next" class="btn-icon"><svg viewBox="0 0 24 24">
+              <path fill="currentColor" d="M16,18H18V6H16M6,18L14.5,12L6,6V18Z" />
+            </svg></button>
+        </div>
+      </div>
+      <div class="lyrics-right">
+        <div id="lyrics-container" class="lyrics-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ranking Submit Modal -->
+  <div id="ranking-modal" class="playlist-modal hidden">
+    <div class="playlist-modal-content glass-panel rk-modal">
+      <h3 id="rk-modal-heading">ส่งเพลงเข้าอันดับ</h3>
+      <div class="rk-preview">
+        <img id="rk-cover-preview" alt="ปกเพลง" />
+        <div class="rk-preview-info">
+          <div id="rk-title" class="rk-title"></div>
+          <div id="rk-artist" class="rk-artist"></div>
+          <div id="rk-duration" class="rk-duration"></div>
+        </div>
+      </div>
+      <label class="rk-file" for="rk-cover-file">
+        <input type="file" id="rk-cover-file" accept="image/png,image/jpeg,image/gif" />
+        <span>🖼️ เปลี่ยนรูปปกเอง (PNG / JPG / GIF ไม่เกิน 1.5MB)</span>
+      </label>
+      <p class="rk-hint">รูปปกที่อัปโหลดจะใช้เมื่อเป็นเพลงที่ยังไม่เคยอยู่ในอันดับเท่านั้น</p>
+      <button type="button" id="rk-cover-reset" class="rk-link hidden">↩ ใช้ปกเดิมจาก Spotify</button>
+      <div class="rk-actions">
+        <button type="button" id="rk-cancel" class="btn-close-playlist">ยกเลิก</button>
+        <button type="button" id="rk-submit" class="btn-primary">ส่งเข้าอันดับ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Context Menu -->
+  <div id="context-menu" class="context-menu hidden">
+    <div class="menu-item" id="menu-play-next">เล่นถัดไป</div>
+    <div class="menu-item" id="menu-add-playlist">เพิ่มไปยังเพลย์ลิสต์...</div>
+  </div>
+
+  <!-- Playlist Selection Modal -->
+  <div id="playlist-modal" class="playlist-modal hidden">
+    <div class="playlist-modal-content glass-panel">
+      <h3>เลือกเพลย์ลิสต์</h3>
+      <div id="playlist-list" class="playlist-list"></div>
+      <button class="btn-close-playlist"
+        onclick="document.getElementById('playlist-modal').classList.add('hidden')">ปิด</button>
+    </div>
+  </div>
+
+  <!-- am-lyrics -->
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@uimaxbai/am-lyrics/dist/src/am-lyrics.min.js"></script>
+
+  <script type="module" src="main.js"></script>
+</body>
+
+</html>
