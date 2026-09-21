@@ -212,8 +212,16 @@
   <div id="tv-modal" class="playlist-modal hidden">
     <div class="playlist-modal-content glass-panel tv-share-modal">
       <h3>แชร์ไปยังหน้าจอ TV <span class="tv-beta">BETA</span></h3>
-      <p class="tv-share-hint">พิมพ์ที่อยู่เว็บนี้ตามด้วย /tv บนเบราว์เซอร์ของทีวี (หรือ Cast แท็บไปยังทีวี) แล้วกรอกรหัสด้านล่าง ทีวีจะแสดงเนื้อเพลงและสีพื้นหลังเหมือนหน้าเนื้อเพลงบนเครื่องนี้</p>
-      <div id="tv-share-code" class="tv-share-code">------</div>
+
+      <div class="tv-section-head"><span>1) เลือกอุปกรณ์เล่นเสียง</span><button type="button" id="tv-devices-refresh" class="rank-refresh">ค้นหา</button></div>
+      <div id="tv-now-playing-on" class="tv-share-status">กำลังเล่นเสียงบน: เครื่องนี้</div>
+      <div id="tv-devices" class="tv-devices"></div>
+      <p id="tv-devices-hint" class="tv-share-hint"></p>
+
+      <div class="tv-section-head"><span>2) แสดงเนื้อเพลงบนจอ TV</span></div>
+      <p class="tv-share-hint">พิมพ์ที่อยู่เว็บนี้ตามด้วย /tv บนเบราว์เซอร์ของทีวี (หรือ Cast แท็บไปยังทีวี) แล้วกรอกรหัส ทีวีจะแสดงเนื้อเพลงและสีพื้นหลังเหมือนหน้าเนื้อเพลงบนเครื่องนี้</p>
+      <button type="button" id="tv-share-start" class="btn-primary">สร้างรหัสแสดงเนื้อเพลงบน TV</button>
+      <div id="tv-share-code" class="tv-share-code hidden">------</div>
       <div id="tv-share-url" class="tv-share-url"></div>
       <div id="tv-share-status" class="tv-share-status"></div>
       <div class="rk-actions">
@@ -236,7 +244,7 @@
       <h3>เลือกเพลย์ลิสต์</h3>
       <div id="playlist-list" class="playlist-list"></div>
       <button class="btn-close-playlist"
-        onclick="document.getElementById('playlist-modal').classList.add('hidden')">ปิด</button>
+        onclick="closePlaylistModal()">ปิด</button>
     </div>
   </div>
 
