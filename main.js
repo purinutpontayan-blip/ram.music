@@ -160,6 +160,8 @@ const unfollowArtist = async (artistId) => {
 // PLAYER
 // ============================================================
 let deviceId, _onStateChange, _onReady;
+// เล่นเสียงบนอุปกรณ์อื่นผ่าน Spotify Connect (เช่น ทีวี): remote.id ว่าง = เล่นบนเบราว์เซอร์นี้
+const remote = { id: '', name: '', timer: null, last: null };
 window.sdkIsReady = false;
 window.pendingInit = null;
 window.onSpotifyWebPlaybackSDKReady = () => {
@@ -180,7 +182,7 @@ function initSpotifyPlayer(token, onStateChange, onReady) {
     player.addListener('authentication_error', ({ message }) => { console.error('Auth error:', message); localStorage.removeItem('spotify_access_token'); setTimeout(() => window.location.reload(), 2000); });
     player.addListener('account_error', () => showPremiumRequiredModal());
     player.addListener('playback_error', ({ message }) => { console.error('Playback error:', message); showToast('❌ เกิดข้อผิดพลาดในการเล่นเพลง', 'error'); });
-    player.addListener('player_state_changed', state => { if (_onStateChange) _onStateChange(state); });
+    player.addListener('player_state_changed', state => { if (remote.id) return; /* กำลังเล่นบนอุปกรณ์อื่น ไม่ให้สถานะของเครื่องนี้มาทับ */ if (_onStateChange) _onStateChange(state); });
     player.addListener('ready', ({ device_id }) => { deviceId = device_id; transferPlaybackHere(device_id); if (_onReady) _onReady(); showToast('✅ Player พร้อมใช้งานแล้ว!', 'info'); });
     player.addListener('not_ready', ({ device_id }) => { console.log('Device offline:', device_id); });
     player.connect();
@@ -196,12 +198,73 @@ async function playTrack(uri, contextUri) {
   if (!deviceId) { showToast('⚠️ Player ยังไม่พร้อม กรุณารอสักครู่', 'warning'); return; }
   try {
     const body = contextUri ? { context_uri: contextUri, offset: { uri } } : { uris: [uri] };
-    await fetchWebApi(`v1/me/player/play?device_id=${deviceId}`, 'PUT', body);
+    await fetchWebApi(`v1/me/player/play?device_id=${remote.id || deviceId}`, 'PUT', body);
   } catch (e) { showToast('❌ ไม่สามารถเล่นเพลงนี้ได้', 'error'); }
 }
-const togglePlay = () => { if (window._spotifyPlayer) window._spotifyPlayer.togglePlay(); };
-const nextTrack = () => { if (window._spotifyPlayer) window._spotifyPlayer.nextTrack(); };
-const previousTrack = () => { if (window._spotifyPlayer) window._spotifyPlayer.previousTrack(); };
+async function remoteCmd(kind, arg) {
+  const q = `device_id=${encodeURIComponent(remote.id)}`;
+  try {
+    if (kind === 'play') await fetchWebApi(`v1/me/player/play?${q}`, 'PUT');
+    else if (kind === 'pause') await fetchWebApi(`v1/me/player/pause?${q}`, 'PUT');
+    else if (kind === 'next') await fetchWebApi(`v1/me/player/next?${q}`, 'POST');
+    else if (kind === 'previous') await fetchWebApi(`v1/me/player/previous?${q}`, 'POST');
+    else if (kind === 'seek') await fetchWebApi(`v1/me/player/seek?position_ms=${Math.round(arg)}&${q}`, 'PUT');
+    setTimeout(pollRemote, 600);
+  } catch (e) { console.error('Remote command error:', e); showToast('❌ สั่งอุปกรณ์ปลายทางไม่สำเร็จ', 'error'); }
+}
+const togglePlay = () => { if (remote.id) return remoteCmd(seekState.paused ? 'play' : 'pause'); if (window._spotifyPlayer) window._spotifyPlayer.togglePlay(); };
+const nextTrack = () => { if (remote.id) return remoteCmd('next'); if (window._spotifyPlayer) window._spotifyPlayer.nextTrack(); };
+const previousTrack = () => { if (remote.id) return remoteCmd('previous'); if (window._spotifyPlayer) window._spotifyPlayer.previousTrack(); };
+const playbackResume = () => remote.id ? remoteCmd('play') : window._spotifyPlayer?.resume();
+const playbackPause = () => remote.id ? remoteCmd('pause') : window._spotifyPlayer?.pause();
+const playbackSeek = ms => remote.id ? remoteCmd('seek', ms) : window._spotifyPlayer?.seek(ms);
+
+// ---------- เล่นเสียงบนอุปกรณ์อื่น (Spotify Connect) ----------
+// แปลงผลจาก GET /v1/me/player ให้อยู่ในรูปเดียวกับสถานะของ Web Playback SDK เพื่อใช้ UI/เนื้อเพลง/แชร์ TV ชุดเดิม
+function stateFromApi(d) {
+  const item = d?.item; if (!item || item.type !== 'track') return null;
+  const age = d.timestamp ? Math.min(3000, Math.max(0, Date.now() - d.timestamp)) : 0; // ข้อมูลจาก API เก่าไปกี่ ms
+  const position = Math.min(item.duration_ms, (d.progress_ms || 0) + (d.is_playing ? age : 0));
+  return { track_window: { current_track: item }, position, duration: item.duration_ms, paused: !d.is_playing };
+}
+
+async function pollRemote() {
+  if (!remote.id) return;
+  try {
+    const d = await fetchWebApi('v1/me/player');
+    if (!remote.id || !d || !d.device) return;
+    if (d.device.id === deviceId) { leaveRemote(); return; }                       // ผู้ใช้สลับกลับมาเล่นบนเครื่องนี้ (เช่นจากแอป Spotify)
+    if (d.device.id !== remote.id) { remote.id = d.device.id; remote.name = d.device.name; remoteUiRefresh(); } // ไปเล่นบนอุปกรณ์อื่นจากแอป Spotify
+    const st = stateFromApi(d); if (!st) return;
+    const track = st.track_window.current_track, now = performance.now(), prev = remote.last;
+    const expected = prev ? (prev.paused ? prev.position : prev.position + (now - prev.at)) : -1;
+    const changed = !prev || prev.id !== track.id || prev.paused !== st.paused || Math.abs(expected - st.position) > 1500;
+    remote.last = { id: track.id, paused: st.paused, position: st.position, at: now };
+    if (changed) handlePlayerStateChange(st); else syncSeekFromState(st);
+  } catch (e) { if (e.status !== 429) console.error('Remote poll error:', e); }
+}
+
+function enterRemote(dev) {
+  remote.id = dev.id; remote.name = dev.name; remote.last = null;
+  clearInterval(remote.timer); remote.timer = setInterval(pollRemote, 2500);
+  remoteUiRefresh(); setTimeout(pollRemote, 800);
+}
+function leaveRemote() {
+  clearInterval(remote.timer); remote.id = ''; remote.name = ''; remote.last = null;
+  remoteUiRefresh();
+  window._spotifyPlayer?.getCurrentState?.().then(st => { if (st) handlePlayerStateChange(st); }).catch(() => { });
+}
+async function transferToDevice(dev) {
+  const wasPlaying = !seekState.paused && seekState.duration > 0;
+  try { await fetchWebApi('v1/me/player', 'PUT', { device_ids: [dev.id], play: wasPlaying }); }
+  catch (e) {
+    console.error('Transfer error:', e);
+    showToast(e.status === 404 ? '❌ ไม่พบอุปกรณ์นี้แล้ว ลองกดค้นหาใหม่' : e.status === 403 ? '❌ อุปกรณ์นี้ไม่รับคำสั่งจาก Spotify' : '❌ สลับอุปกรณ์ไม่สำเร็จ', 'error');
+    return;
+  }
+  if (dev.id === deviceId) leaveRemote(); else enterRemote(dev);
+  showToast(dev.id === deviceId ? '🔊 เล่นเสียงบนเครื่องนี้' : `🔊 เล่นเสียงบน ${dev.name}`, 'info');
+}
 
 // กล่องข้อความกลางจอ พร้อมปุ่ม "สลับบัญชี" / "ออกจากระบบ" เสมอ — กันเคสที่แอปใช้งานไม่ได้แล้วออกจากระบบไม่ได้
 function showAccountModal({ id = 'account-modal', icon = 'ℹ️', title, html, closable = false, retry = false }) {
@@ -506,11 +569,86 @@ function extractAndApplyColor(imgEl) {
     applyPalette([0, 45, -45, 90, -90].map(d => hslToRgb((hue + d + 360) % 360, 65, 45)));
   }
 }
-function toggleLyricsModal() {
-  const modal = document.getElementById('lyrics-modal');
-  if (!modal.classList.contains('hidden') && document.fullscreenElement) { document.exitFullscreen().then(() => modal.classList.add('hidden')).catch(() => modal.classList.add('hidden')); return; }
-  modal.classList.toggle('hidden');
+// ============================================================
+// ประวัติการนำทาง (ปุ่มย้อนกลับของเบราว์เซอร์/มือถือ)
+//  - แต่ละหน้า (Home/Search/Ranking/ศิลปิน/อัลบั้ม) และหน้าต่างซ้อน (เนื้อเพลง/TV/ส่งเพลง/เพลย์ลิสต์) เป็น 1 รายการในประวัติ
+//  - กดย้อนกลับ = ปิดหน้าต่างซ้อนก่อน แล้วค่อยย้อนไปหน้าก่อนหน้า ทีละขั้น
+//  - ถึงหน้าหลักแล้วกดย้อนกลับ จะไม่ออกจากแอปทันที ต้องกดซ้ำอีกครั้งภายใน 2.5 วินาที
+// ============================================================
+const NAV = { ready: false, restoring: false, exitArmed: false, exitTimer: null, artistId: '', albumId: '' };
+const currentViewId = () => document.querySelector('.view.active')?.id || 'view-home';
+const $el = id => document.getElementById(id);
+
+const OVERLAYS = {
+  lyrics: {
+    isOpen: () => !$el('lyrics-modal').classList.contains('hidden'),
+    set: on => {
+      const modal = $el('lyrics-modal');
+      if (on) { modal.classList.remove('hidden'); return; }
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => { }).finally(() => modal.classList.add('hidden'));
+      else modal.classList.add('hidden');
+    }
+  },
+  rank: { isOpen: () => !$el('ranking-modal').classList.contains('hidden'), set: on => { $el('ranking-modal').classList.toggle('hidden', !on); if (!on) rankingPick = null; } },
+  tv: { isOpen: () => !$el('tv-modal').classList.contains('hidden'), set: on => $el('tv-modal').classList.toggle('hidden', !on) },
+  playlist: { isOpen: () => !$el('playlist-modal').classList.contains('hidden'), set: on => $el('playlist-modal').classList.toggle('hidden', !on) }
+};
+
+function overlayOpen(name) {
+  const o = OVERLAYS[name]; if (!o || o.isOpen()) return;
+  o.set(true);
+  if (!NAV.ready) return;
+  const base = history.state?.app ? history.state : { app: 1, v: currentViewId(), id: '' };
+  history.pushState({ ...base, o: name }, '');
 }
+function overlayClose(name) {
+  const o = OVERLAYS[name]; if (!o || !o.isOpen()) return;
+  o.set(false);
+  if (NAV.ready && history.state?.o === name) history.back(); // เอารายการของหน้าต่างนี้ออกจากประวัติ
+}
+function toggleLyricsModal() { if (OVERLAYS.lyrics.isOpen()) overlayClose('lyrics'); else overlayOpen('lyrics'); }
+window.closePlaylistModal = () => overlayClose('playlist');
+
+// เรียกก่อนเปลี่ยนหน้าด้วยการกดของผู้ใช้ (ไม่เรียกตอนกู้หน้าจากปุ่มย้อนกลับ)
+function navGo(v, id = '') {
+  if (!NAV.ready || NAV.restoring) return;
+  const cur = history.state;
+  if (cur?.app && cur.v === v && (cur.id || '') === id && !cur.o) return;
+  history.pushState({ app: 1, v, id }, '');
+}
+
+function navInit() {
+  if (NAV.ready) return; NAV.ready = true;
+  history.replaceState({ guard: true }, '');                 // จุดเริ่มต้น: ย้อนถึงตรงนี้ = ผู้ใช้จะออกจากแอป
+  history.pushState({ app: 1, v: 'view-home', id: '' }, '');
+  window.addEventListener('popstate', navOnPop);
+}
+
+function navOnPop(e) {
+  const st = e.state;
+  const closeAll = () => Object.keys(OVERLAYS).forEach(n => { if (OVERLAYS[n].isOpen()) OVERLAYS[n].set(false); });
+  if (!st || st.guard || !st.app) {
+    // ย้อนกลับจากหน้าหลักสุด: กดซ้ำภายใน 2.5 วินาทีถึงจะออกจริง
+    if (NAV.exitArmed) { NAV.exitArmed = false; clearTimeout(NAV.exitTimer); history.back(); return; }
+    NAV.exitArmed = true;
+    showToast('กดย้อนกลับอีกครั้งเพื่อออกจากแอป', 'info');
+    NAV.exitTimer = setTimeout(() => { NAV.exitArmed = false; }, 2500);
+    closeAll();
+    NAV.restoring = true; try { showView('view-home'); } finally { NAV.restoring = false; }
+    history.pushState({ app: 1, v: 'view-home', id: '' }, '');
+    return;
+  }
+  NAV.restoring = true;
+  try {
+    Object.keys(OVERLAYS).forEach(n => { if (n !== st.o && OVERLAYS[n].isOpen()) OVERLAYS[n].set(false); });
+    if (st.o && !OVERLAYS[st.o].isOpen()) history.replaceState({ ...st, o: undefined }, ''); // หน้าต่างที่เปิดกลับมาเองไม่ได้ ตัดออกจากสถานะ
+    // หน้าศิลปิน/อัลบั้มใช้ตัวแสดงร่วมกัน: ถ้าเนื้อหาที่ค้างอยู่เป็นของ id นี้ก็แค่สลับหน้า ไม่ต้องโหลดใหม่
+    if (st.v === 'view-artist' && st.id) { if (NAV.artistId === st.id) showView('view-artist'); else handleArtistClick(st.id); }
+    else if (st.v === 'view-album' && st.id) { if (NAV.albumId === st.id) showView('view-album'); else handleAlbumClick(st.id); }
+    else if (st.v !== currentViewId()) showView(st.v);
+  } finally { NAV.restoring = false; }
+}
+
 function showToast(message, type = 'info') {
   let container = document.getElementById('toast-container');
   if (!container) { container = document.createElement('div'); container.id = 'toast-container'; container.className = 'toast-container'; document.body.appendChild(container); }
@@ -717,7 +855,7 @@ function setupSeekBars() {
       const pos = Math.round(bar.value / 1000 * seekState.duration);
       seekState.position = pos; seekState.ts = performance.now(); seekState.dragging = false;
       renderSeek(pos);
-      try { await window._spotifyPlayer?.seek(pos); }
+      try { await playbackSeek(pos); }
       catch (e) { console.error('Seek error:', e); showToast('❌ ไม่สามารถเลื่อนเพลงได้', 'error'); }
       updateLyricsComponent(pos, seekState.duration, seekState.paused);
     });
@@ -728,7 +866,7 @@ function setupSeekBars() {
   setInterval(() => { if (!document.hidden && !seekState.dragging && !seekState.paused && seekState.duration) renderSeek(currentSeekPosition()); }, 250);
   // ซิงก์กับ Player จริงทุก 5 วินาที กันเวลาเพี้ยน (เช่น บัฟเฟอร์)
   setInterval(async () => {
-    if (!window._spotifyPlayer || seekState.dragging || seekState.paused) return;
+    if (!window._spotifyPlayer || remote.id || seekState.dragging || seekState.paused) return;
     try { syncSeekFromState(await window._spotifyPlayer.getCurrentState()); } catch (e) { }
   }, 5000);
 }
@@ -993,9 +1131,9 @@ function openRankingModal(track) {
   rkArtist.appendChild(document.createTextNode(rankingPick.artist));
   const rkHead = document.getElementById('rk-modal-heading'); if (rkHead) rkHead.textContent = `ส่งเพลงเข้าหัวข้อ: ${rankingTopic.title}`;
   document.getElementById('rk-duration').textContent = `ระยะเวลา ${rkFmt(rankingPick.durationMs)}`;
-  document.getElementById('ranking-modal').classList.remove('hidden');
+  overlayOpen('rank');
 }
-function closeRankingModal() { document.getElementById('ranking-modal')?.classList.add('hidden'); rankingPick = null; }
+function closeRankingModal() { overlayClose('rank'); rankingPick = null; }
 
 function setupRanking() {
   const input = document.getElementById('ranking-search-input');
@@ -1048,6 +1186,7 @@ async function init() {
     accessToken = await handleRedirect();
     if (!accessToken) { showScreen('login-screen'); return; }
     showScreen('app-screen');
+    navInit();
 
     let profile;
     try { profile = await getUserProfile(); }
@@ -1078,7 +1217,7 @@ function setupEventListeners() {
   setupWakeLock();
   setupRanking();
   document.getElementById('login-button').addEventListener('click', loginWithSpotify);
-  document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(`view-${e.target.dataset.target}`); }));
+  document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); const v = `view-${e.target.dataset.target}`; navGo(v); showView(v); }));
   let searchTimeout;
   document.getElementById('search-input').addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
@@ -1091,7 +1230,7 @@ function setupEventListeners() {
   document.getElementById('btn-prev').addEventListener('click', previousTrack);
   document.getElementById('btn-lyrics-toggle').addEventListener('click', async () => {
     toggleLyricsModal();
-    if (window._spotifyPlayer) { const state = await window._spotifyPlayer.getCurrentState(); if (state) { const lyricsContainer = document.getElementById('lyrics-container'); const containerEmpty = !lyricsContainer || lyricsContainer.children.length === 0; const track = state.track_window?.current_track; if (track && containerEmpty) { currentTrackData = null; setupLyricsComponent(track); } updateLyricsComponent(state.position, state.duration, state.paused); } }
+    if (window._spotifyPlayer || remote.id) { const state = remote.id ? window._lastState : await window._spotifyPlayer.getCurrentState(); if (state) { const lyricsContainer = document.getElementById('lyrics-container'); const containerEmpty = !lyricsContainer || lyricsContainer.children.length === 0; const track = state.track_window?.current_track; if (track && containerEmpty) { currentTrackData = null; setupLyricsComponent(track); } updateLyricsComponent(state.position, state.duration, state.paused); } }
   });
   document.getElementById('btn-close-lyrics').addEventListener('click', () => toggleLyricsModal());
   setupTvShare();
@@ -1107,6 +1246,7 @@ function setupEventListeners() {
 
 async function handleArtistClick(artistId) {
   try {
+    NAV.artistId = artistId; navGo('view-artist', artistId);
     showView('view-artist');
     document.getElementById('artist-header').innerHTML = 'กำลังโหลด...';
     document.getElementById('artist-top-tracks').innerHTML = '';
@@ -1144,6 +1284,7 @@ async function handleArtistClick(artistId) {
 
 async function handleAlbumClick(albumId) {
   try {
+    NAV.albumId = albumId; navGo('view-album', albumId);
     showView('view-album');
     document.getElementById('album-header').innerHTML = 'กำลังโหลด...';
     document.getElementById('album-tracks').innerHTML = '';
@@ -1170,7 +1311,7 @@ function setupContextMenu() {
   });
   document.getElementById('menu-add-playlist').addEventListener('click', async () => {
     if (currentContextTrack) {
-      document.getElementById('playlist-modal').classList.remove('hidden');
+      overlayOpen('playlist');
       const listContainer = document.getElementById('playlist-list'); listContainer.innerHTML = 'กำลังโหลด...';
       try {
         const user = await getUserProfile();
@@ -1178,7 +1319,7 @@ function setupContextMenu() {
         const myPlaylists = playlists.items.filter(p => p.owner.id === user.id);
         listContainer.innerHTML = '';
         if (myPlaylists.length === 0) { listContainer.innerHTML = 'ไม่พบเพลย์ลิสต์ของคุณ'; }
-        else { myPlaylists.forEach(p => { const item = document.createElement('div'); item.className = 'playlist-list-item'; item.textContent = p.name; item.onclick = async () => { try { await fetchWebApi(`v1/playlists/${p.id}/tracks?uris=${currentContextTrack.uri}`, 'POST'); showToast(`✅ เพิ่มเพลงลงใน ${p.name} แล้ว`, 'info'); document.getElementById('playlist-modal').classList.add('hidden'); } catch (err) { showToast('❌ ไม่สามารถเพิ่มเพลงได้', 'error'); } }; listContainer.appendChild(item); }); }
+        else { myPlaylists.forEach(p => { const item = document.createElement('div'); item.className = 'playlist-list-item'; item.textContent = p.name; item.onclick = async () => { try { await fetchWebApi(`v1/playlists/${p.id}/tracks?uris=${currentContextTrack.uri}`, 'POST'); showToast(`✅ เพิ่มเพลงลงใน ${p.name} แล้ว`, 'info'); overlayClose('playlist'); } catch (err) { showToast('❌ ไม่สามารถเพิ่มเพลงได้', 'error'); } }; listContainer.appendChild(item); }); }
       } catch (e) { listContainer.innerHTML = 'เกิดข้อผิดพลาดในการโหลดเพลย์ลิสต์'; }
     }
     menu.classList.add('hidden');
@@ -1203,6 +1344,8 @@ function tvRender() {
   const code = document.getElementById('tv-share-code'); if (!code) return;
   code.textContent = on ? tvS.session.code.replace(/(\d{3})(\d{3})/, '$1 $2') : '------';
   document.getElementById('tv-share-url').textContent = on ? tvUrl() : '';
+  code.classList.toggle('hidden', !on);
+  document.getElementById('tv-share-start')?.classList.toggle('hidden', on);
   document.getElementById('tv-share-stop').classList.toggle('hidden', !on);
   document.getElementById('tv-share-copy').classList.toggle('hidden', !on);
 }
@@ -1224,7 +1367,7 @@ async function tvStart() {
     localStorage.setItem(TV_SESSION_KEY, JSON.stringify(tvS.session));
     status.textContent = 'พร้อมแล้ว — กรอกรหัสนี้บนหน้าจอ TV';
     tvRender(); tvBeat();
-    const cur = await window._spotifyPlayer?.getCurrentState?.();
+    const cur = remote.id ? window._lastState : await window._spotifyPlayer?.getCurrentState?.();
     if (cur) tvOnPlayerState(cur, true);
   } catch (e) {
     console.error('TV create error:', e);
@@ -1285,13 +1428,62 @@ async function tvPushNow() {
   finally { tvS.sending = false; }
 }
 
+// ---------- เลือกอุปกรณ์เล่นเสียง (ทีวี ฯลฯ) ----------
+const DEVICE_ICONS = { TV: '📺', CastVideo: '📺', CastAudio: '🔊', Speaker: '🔊', AVR: '🔊', STB: '📺', AudioDongle: '🔊', Computer: '💻', Smartphone: '📱', Tablet: '📱', GameConsole: '🎮', Automobile: '🚗' };
+const DEVICE_LABELS = { TV: 'ทีวี', CastVideo: 'Chromecast / Google TV', CastAudio: 'Chromecast Audio', Speaker: 'ลำโพง', AVR: 'ชุดรับสัญญาณเสียง', STB: 'กล่องรับสัญญาณ', AudioDongle: 'อุปกรณ์เสียง', Computer: 'คอมพิวเตอร์', Smartphone: 'โทรศัพท์', Tablet: 'แท็บเล็ต', GameConsole: 'เครื่องเกม', Automobile: 'รถยนต์' };
+let devicesCache = [];
+
+function remoteUiRefresh() {
+  const label = document.getElementById('tv-now-playing-on');
+  if (label) label.textContent = remote.id ? `กำลังเล่นเสียงบน: ${remote.name}` : 'กำลังเล่นเสียงบน: เครื่องนี้';
+  renderDevices();
+}
+
+function renderDevices() {
+  const box = document.getElementById('tv-devices'); if (!box) return;
+  const activeId = remote.id || deviceId;
+  box.innerHTML = '';
+  devicesCache.forEach(d => {
+    const btn = document.createElement('button'); btn.type = 'button';
+    btn.className = 'tv-device' + (d.id === activeId ? ' active' : '');
+    const icon = document.createElement('span'); icon.className = 'tv-device-icon'; icon.textContent = DEVICE_ICONS[d.type] || '🎵';
+    const info = document.createElement('span'); info.className = 'tv-device-info';
+    const name = document.createElement('span'); name.className = 'tv-device-name'; name.textContent = d.id === deviceId ? `${d.name} (เครื่องนี้)` : d.name;
+    const type = document.createElement('span'); type.className = 'tv-device-type'; type.textContent = d.id === activeId ? '🔊 กำลังเล่นเสียงที่นี่' : (DEVICE_LABELS[d.type] || d.type);
+    info.append(name, type); btn.append(icon, info);
+    btn.onclick = () => { if (d.id !== activeId) transferToDevice(d).then(() => setTimeout(loadDevices, 1500)); };
+    box.appendChild(btn);
+  });
+}
+
+async function loadDevices() {
+  const box = document.getElementById('tv-devices'), hint = document.getElementById('tv-devices-hint'); if (!box) return;
+  box.textContent = 'กำลังค้นหาอุปกรณ์...'; hint.textContent = '';
+  try {
+    const data = await fetchWebApi('v1/me/player/devices');
+    const rank = d => d.id === deviceId ? 3 : /TV|Cast|STB/i.test(d.type) ? 0 : 1;
+    devicesCache = (data?.devices || []).filter(d => d.id && !d.is_restricted).sort((a, b) => rank(a) - rank(b));
+    if (!devicesCache.length) { box.textContent = 'ไม่พบอุปกรณ์'; }
+    else renderDevices();
+    const hasOther = devicesCache.some(d => d.id !== deviceId);
+    hint.textContent = hasOther ? 'แตะอุปกรณ์เพื่อสลับเสียงไปเล่นที่นั่น (ใช้ Spotify Connect ต้องใช้ Premium)' : 'ยังไม่พบทีวี: เปิดแอป Spotify บนทีวี (หรือกด Cast จากแอป Spotify) โดยใช้บัญชีเดียวกันและเครือข่าย Wi-Fi เดียวกัน แล้วกดค้นหาอีกครั้ง';
+  } catch (e) {
+    console.error('Devices error:', e);
+    box.textContent = 'ค้นหาอุปกรณ์ไม่สำเร็จ';
+    hint.textContent = e.status === 403 ? 'ต้องเข้าสู่ระบบใหม่เพื่ออนุญาตสิทธิ์ควบคุมการเล่น (ออกจากระบบแล้วเข้าใหม่)' : 'ลองกดค้นหาอีกครั้ง';
+  }
+  remoteUiRefresh();
+}
+
 function setupTvShare() {
   const modal = document.getElementById('tv-modal'); if (!modal) return;
-  const open = () => { modal.classList.remove('hidden'); document.getElementById('tv-share-status').textContent = ''; tvRender(); if (!tvS.session) tvStart(); };
+  const open = () => { document.getElementById('tv-share-status').textContent = ''; overlayOpen('tv'); tvRender(); loadDevices(); };
   document.getElementById('btn-tv-share')?.addEventListener('click', open);
   document.getElementById('btn-tv-share-lyrics')?.addEventListener('click', open);
-  document.getElementById('tv-share-close')?.addEventListener('click', () => modal.classList.add('hidden'));
-  modal.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden'); });
+  document.getElementById('tv-share-close')?.addEventListener('click', () => overlayClose('tv'));
+  modal.addEventListener('click', e => { if (e.target === modal) overlayClose('tv'); });
+  document.getElementById('tv-share-start')?.addEventListener('click', tvStart);
+  document.getElementById('tv-devices-refresh')?.addEventListener('click', loadDevices);
   document.getElementById('tv-share-stop')?.addEventListener('click', tvStop);
   document.getElementById('tv-share-copy')?.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(tvUrl()); showToast('✅ คัดลอกลิงก์แล้ว', 'info'); } catch (e) { showToast('คัดลอกไม่ได้ กรุณาคัดลอกจากข้อความในหน้าต่าง', 'warning'); }
@@ -1314,15 +1506,16 @@ function updateMediaSession(state) {
   if (_mediaSessionReady) return;
   _mediaSessionReady = true;
   const on = (action, fn) => { try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) { } };
-  on('play', () => window._spotifyPlayer?.resume());
-  on('pause', () => window._spotifyPlayer?.pause());
+  on('play', playbackResume);
+  on('pause', playbackPause);
   on('previoustrack', previousTrack);
   on('nexttrack', nextTrack);
-  on('seekto', d => { if (d && typeof d.seekTime === 'number') window._spotifyPlayer?.seek(Math.round(d.seekTime * 1000)); });
+  on('seekto', d => { if (d && typeof d.seekTime === 'number') playbackSeek(Math.round(d.seekTime * 1000)); });
 }
 
 function handlePlayerStateChange(state) {
   if (!state) return;
+  window._lastState = state;
   syncSeekFromState(state);
   updatePlayerUI(state);
   updateMediaSession(state);
