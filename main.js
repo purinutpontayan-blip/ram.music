@@ -590,7 +590,7 @@ const OVERLAYS = {
     }
   },
   rank: { isOpen: () => !$el('ranking-modal').classList.contains('hidden'), set: on => { $el('ranking-modal').classList.toggle('hidden', !on); if (!on) rankingPick = null; } },
-  tv: { isOpen: () => !$el('tv-modal').classList.contains('hidden'), set: on => $el('tv-modal').classList.toggle('hidden', !on) },
+  tv: { isOpen: () => !$el('tv-modal').classList.contains('hidden'), set: on => { $el('tv-modal').classList.toggle('hidden', !on); if (!on) tvHelloStop(); } },
   playlist: { isOpen: () => !$el('playlist-modal').classList.contains('hidden'), set: on => $el('playlist-modal').classList.toggle('hidden', !on) }
 };
 
@@ -1351,7 +1351,7 @@ function tvRender() {
 }
 
 function tvClearLocal() {
-  tvS.session = null; tvS.sent = null; clearTimeout(tvS.timer); clearInterval(tvS.beat);
+  tvS.session = null; tvS.sent = null; clearTimeout(tvS.timer); clearInterval(tvS.beat); tvHelloStop(); tvHello = null;
   localStorage.removeItem(TV_SESSION_KEY); tvRender();
 }
 
@@ -1423,6 +1423,7 @@ async function tvPushNow() {
     const r = await rankingApi({ action: 'tv_push', code: sess.code, key: sess.key, seq: ++tvS.seq, track: info, position: Math.round(pos), paused: L.paused, lagMs: Math.round(tvS.rtt / 2), palette: tvS.palette });
     tvS.rtt = tvS.rtt * .6 + (performance.now() - t0) * .4;
     if (!r.ok) { if (r.error === 'tv_not_found') { tvClearLocal(); showToast('⚠️ หยุดแชร์ TV แล้ว (รหัสหมดอายุ)', 'warning'); } return; }
+    if (r.helloPending && !tvHelloTimer) { tvHelloPoll(); if (!tvHelloNotified && !sess.peer) { tvHelloNotified = true; showToast('📺 หน้า /tv ขอเล่นเสียงบนทีวี — เปิดปุ่ม TV เพื่ออนุญาต', 'info'); } }
     tvS.sent = { trackId: t.id, position: pos, paused: L.paused, at: t0 };
   } catch (e) { console.error('TV push error:', e); }
   finally { tvS.sending = false; }
@@ -1475,21 +1476,107 @@ async function loadDevices() {
   remoteUiRefresh();
 }
 
+// ---------- เสียงออกบนหน้า /tv ----------
+// หน้า /tv ขออนุญาต -> ผู้ใช้เทียบรหัสยืนยัน 4 หลักแล้วกดอนุญาต -> เข้ารหัสโทเค็นส่งให้ TV (ECDH P-256 + AES-GCM,
+// เซิร์ฟเวอร์เห็นแค่ข้อมูลเข้ารหัส) -> TV เปิดตัวเล่นชื่อ "R Music TV <รหัส>" -> สลับเสียงไปที่นั่น เครื่องนี้จะเงียบ
+const ECDH_PARAMS = { name: 'ECDH', namedCurve: 'P-256' };
+const b64e = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+let tvHello = null, tvHelloTimer = null, tvHelloNotified = false, tvSwitching = false;
+
+async function tvSas(pubB64) {
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', b64d(pubB64)));
+  return String((((h[0] << 24) | (h[1] << 16) | (h[2] << 8) | h[3]) >>> 0) % 10000).padStart(4, '0');
+}
+function setTvAudioState(text) { const el = document.getElementById('tv-audio-state'); if (el) el.textContent = text || ''; }
+
+async function tvGrant(peerPubB64) {
+  const token = localStorage.getItem('spotify_access_token'), sess = tvS.session;
+  if (!token || !sess) return false;
+  const peer = await crypto.subtle.importKey('raw', b64d(peerPubB64), ECDH_PARAMS, false, []);
+  const eph = await crypto.subtle.generateKey(ECDH_PARAMS, true, ['deriveKey']);
+  const aes = await crypto.subtle.deriveKey({ name: 'ECDH', public: peer }, eph.privateKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aes, new TextEncoder().encode(JSON.stringify({ token })));
+  const epub = b64e(await crypto.subtle.exportKey('raw', eph.publicKey));
+  const r = await rankingApi({ action: 'tv_grant', code: sess.code, key: sess.key, epub, iv: b64e(iv), ct: b64e(ct) });
+  return !!r.ok;
+}
+
+async function tvHelloPoll() {
+  const sess = tvS.session; if (!sess) return;
+  try {
+    const r = await rankingApi({ action: 'tv_hello_get', code: sess.code, key: sess.key });
+    if (!r.ok) { if (r.error === 'tv_not_found') tvClearLocal(); return; }
+    tvHello = r.hello || null;
+    // TV เครื่องเดิมที่เคยอนุญาตในรหัสนี้แล้ว (กุญแจตรงกัน) ไม่ต้องถามซ้ำ
+    if (tvHello && tvHello.pub === sess.peer && !tvSwitching) { tvHello = null; await tvGrant(sess.peer); tvSwitchToTvDevice(); }
+    renderAudioRequest();
+  } catch (e) { console.error('TV hello error:', e); }
+}
+
+async function renderAudioRequest() {
+  const box = document.getElementById('tv-audio-request'); if (!box) return;
+  if (!tvHello) { box.classList.add('hidden'); return; }
+  document.getElementById('tv-audio-sas').textContent = await tvSas(tvHello.pub);
+  box.classList.remove('hidden');
+}
+
+async function tvAllow() {
+  const h = tvHello, sess = tvS.session; if (!h || !sess) return;
+  setTvAudioState('กำลังส่งสิทธิ์ให้ TV...');
+  try {
+    if (!(await tvGrant(h.pub))) throw new Error('grant failed');
+    sess.peer = h.pub; localStorage.setItem(TV_SESSION_KEY, JSON.stringify(sess));
+    tvHello = null; renderAudioRequest();
+    tvSwitchToTvDevice();
+  } catch (e) { console.error(e); setTvAudioState('ส่งสิทธิ์ไม่สำเร็จ ลองอีกครั้ง'); }
+}
+async function tvDeny() {
+  const sess = tvS.session; if (!sess) return;
+  try { await rankingApi({ action: 'tv_deny', code: sess.code, key: sess.key }); } catch (e) { }
+  tvHello = null; renderAudioRequest(); setTvAudioState('ไม่อนุญาตแล้ว');
+}
+
+// รอตัวเล่นบน TV โผล่ในรายการอุปกรณ์ของ Spotify แล้วสลับเสียงไปที่นั่นอัตโนมัติ (เสียงเครื่องนี้จะดับ)
+async function tvSwitchToTvDevice() {
+  if (tvSwitching || !tvS.session) return;
+  tvSwitching = true;
+  const name = `R Music TV ${tvS.session.code}`;
+  setTvAudioState('รอ TV เปิดตัวเล่นเสียง...');
+  try {
+    for (let i = 0; i < 40 && tvS.session; i++) {
+      try {
+        const data = await fetchWebApi('v1/me/player/devices');
+        const dev = data?.devices?.find(d => d.name === name && d.id);
+        if (dev) { await transferToDevice(dev); setTvAudioState('🔊 เสียงออกที่ทีวีแล้ว (เสียงบนเครื่องนี้ดับ)'); loadDevices(); return; }
+      } catch (e) { }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    setTvAudioState('ไม่พบตัวเล่นเสียงบน TV — ตรวจว่าเบราว์เซอร์ทีวีเล่นเสียง Spotify ได้ หรือเลือกอุปกรณ์จากรายการด้านบน');
+  } finally { tvSwitching = false; }
+}
+
+function tvHelloStart() { clearInterval(tvHelloTimer); if (!tvS.session) return; tvHelloPoll(); tvHelloTimer = setInterval(tvHelloPoll, 2500); }
+function tvHelloStop() { clearInterval(tvHelloTimer); tvHelloTimer = null; }
+
 function setupTvShare() {
   const modal = document.getElementById('tv-modal'); if (!modal) return;
-  const open = () => { document.getElementById('tv-share-status').textContent = ''; overlayOpen('tv'); tvRender(); loadDevices(); };
+  const open = () => { document.getElementById('tv-share-status').textContent = ''; overlayOpen('tv'); tvRender(); loadDevices(); tvHelloStart(); };
   document.getElementById('btn-tv-share')?.addEventListener('click', open);
   document.getElementById('btn-tv-share-lyrics')?.addEventListener('click', open);
   document.getElementById('tv-share-close')?.addEventListener('click', () => overlayClose('tv'));
   modal.addEventListener('click', e => { if (e.target === modal) overlayClose('tv'); });
-  document.getElementById('tv-share-start')?.addEventListener('click', tvStart);
+  document.getElementById('tv-share-start')?.addEventListener('click', async () => { await tvStart(); tvHelloStart(); });
+  document.getElementById('tv-audio-allow')?.addEventListener('click', tvAllow);
+  document.getElementById('tv-audio-deny')?.addEventListener('click', tvDeny);
   document.getElementById('tv-devices-refresh')?.addEventListener('click', loadDevices);
   document.getElementById('tv-share-stop')?.addEventListener('click', tvStop);
   document.getElementById('tv-share-copy')?.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(tvUrl()); showToast('✅ คัดลอกลิงก์แล้ว', 'info'); } catch (e) { showToast('คัดลอกไม่ได้ กรุณาคัดลอกจากข้อความในหน้าต่าง', 'warning'); }
   });
   tvRender();
-  if (tvS.session) tvBeat(); // รีโหลดหน้าแล้วยังแชร์ต่อ
+  if (tvS.session) { tvBeat(); if (tvS.session.peer) tvGrant(tvS.session.peer).catch(() => { }); } // รีโหลดหน้าแล้วยังแชร์ต่อ + ส่งโทเค็นใหม่ให้ TV ที่เคยอนุญาตไว้
 }
 
 // ---------- Media Session ----------
