@@ -1851,3 +1851,27 @@ am-lyrics {
 
 /* เว้นระยะระหว่างปุ่ม TV กับ Lyrics ที่แถบเล่นเพลง */
 .player-extra { gap: .5rem; align-items: center; }
+
+/* ============================================================
+   เลือกอุปกรณ์เล่นเสียง (Spotify Connect) + ปุ่ม TV บนมือถือ
+   ============================================================ */
+.tv-share-modal { max-height: 88vh; overflow-y: auto; }
+.tv-section-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-weight: 600; margin-top: .5rem; }
+.tv-devices { display: flex; flex-direction: column; gap: .5rem; max-height: 220px; overflow-y: auto; }
+.tv-device { display: flex; align-items: center; gap: .8rem; width: 100%; text-align: left; padding: .7rem .9rem; border-radius: 14px; border: 1px solid var(--glass-border); background: rgba(255, 255, 255, .06); color: var(--text-main); font: inherit; cursor: pointer; transition: background .2s; }
+.tv-device:hover { background: rgba(255, 255, 255, .12); }
+.tv-device.active { border-color: var(--accent); background: rgba(29, 185, 84, .14); }
+.tv-device-icon { font-size: 1.6rem; flex-shrink: 0; }
+.tv-device-info { display: flex; flex-direction: column; min-width: 0; }
+.tv-device-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-device-type { font-size: .8rem; color: var(--text-muted); }
+.tv-device.active .tv-device-type { color: var(--accent); }
+.tv-share-code.hidden { display: none; }
+
+@media (max-width: 768px) {
+  /* ให้ปุ่ม TV / Lyrics ที่แถบเล่นเพลงไม่ถูกบีบหรือตกขอบบนจอแคบ */
+  .player-extra { flex: 0 0 auto; gap: .3rem; }
+  .player-extra .lyrics-btn { padding: .4rem .65rem; min-width: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+  #btn-tv-share { display: inline-flex !important; }
+  .track-info { min-width: 0; }
+}
