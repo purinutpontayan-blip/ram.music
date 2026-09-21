@@ -1885,3 +1885,9 @@ am-lyrics {
 @media (max-width: 768px) {
   #btn-tv-share, #btn-tv-share-lyrics { display: none !important; }
 }
+
+/* แก้หน้าต่างแชร์ TV: รายการอุปกรณ์ถูกบีบจนเหลือแถบบาง ๆ (ลูกของ flex ที่มี overflow ย่อได้ถึง 0) */
+.tv-share-modal { display: flex; flex-direction: column; }
+.tv-share-modal > * { flex-shrink: 0; }
+.tv-devices { min-height: 64px; }
+.tv-share-status:empty { display: none; }
