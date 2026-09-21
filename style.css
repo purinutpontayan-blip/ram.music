@@ -1872,6 +1872,16 @@ am-lyrics {
   /* ให้ปุ่ม TV / Lyrics ที่แถบเล่นเพลงไม่ถูกบีบหรือตกขอบบนจอแคบ */
   .player-extra { flex: 0 0 auto; gap: .3rem; }
   .player-extra .lyrics-btn { padding: .4rem .65rem; min-width: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
-  #btn-tv-share { display: inline-flex !important; }
   .track-info { min-width: 0; }
+}
+
+/* คำขอเปิดเสียงบนทีวี (หน้าต่างแชร์ TV) */
+.tv-audio-request { display: flex; flex-direction: column; gap: .6rem; padding: .9rem 1rem; border-radius: 14px; border: 1px solid var(--accent); background: rgba(29, 185, 84, .12); font-size: .9rem; line-height: 1.5; }
+.tv-audio-request.hidden { display: none; }
+.tv-audio-title { font-weight: 600; }
+.tv-audio-sas { font-size: 1.6rem; letter-spacing: .2em; color: var(--accent); }
+
+/* มือถือ: ไม่แสดงปุ่ม TV (ทั้งที่แถบเล่นเพลงและในหน้าเนื้อเพลง) */
+@media (max-width: 768px) {
+  #btn-tv-share, #btn-tv-share-lyrics { display: none !important; }
 }
