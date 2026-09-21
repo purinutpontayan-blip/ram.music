@@ -220,7 +220,17 @@
 
       <div class="tv-section-head"><span>2) แสดงเนื้อเพลงบนจอ TV</span></div>
       <p class="tv-share-hint">พิมพ์ที่อยู่เว็บนี้ตามด้วย /tv บนเบราว์เซอร์ของทีวี (หรือ Cast แท็บไปยังทีวี) แล้วกรอกรหัส ทีวีจะแสดงเนื้อเพลงและสีพื้นหลังเหมือนหน้าเนื้อเพลงบนเครื่องนี้</p>
+      <p class="tv-share-hint">ถ้าหน้า /tv รองรับ จะขอเล่นเสียงออกทีวี: เมื่อคุณกด “อนุญาต” เสียงจะย้ายไปออกที่ทีวี และเสียงบนเครื่องนี้จะดับ (ทีวีจะได้รับสิทธิ์ควบคุม Spotify ของคุณชั่วคราวประมาณ 1 ชั่วโมง โดยส่งแบบเข้ารหัส)</p>
       <button type="button" id="tv-share-start" class="btn-primary">สร้างรหัสแสดงเนื้อเพลงบน TV</button>
+      <div id="tv-audio-request" class="tv-audio-request hidden">
+        <div class="tv-audio-title">📺 หน้า /tv ขอเล่นเสียงบนทีวี</div>
+        <div>รหัสยืนยัน <b id="tv-audio-sas" class="tv-audio-sas">----</b> — ต้องตรงกับตัวเลขที่ขึ้นบนจอทีวี ถ้าไม่ตรงให้กด “ไม่อนุญาต”</div>
+        <div class="rk-actions">
+          <button type="button" id="tv-audio-deny" class="btn-close-playlist">ไม่อนุญาต</button>
+          <button type="button" id="tv-audio-allow" class="btn-primary">อนุญาต</button>
+        </div>
+      </div>
+      <div id="tv-audio-state" class="tv-share-status"></div>
       <div id="tv-share-code" class="tv-share-code hidden">------</div>
       <div id="tv-share-url" class="tv-share-url"></div>
       <div id="tv-share-status" class="tv-share-status"></div>
