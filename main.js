@@ -630,7 +630,8 @@ const OVERLAYS = {
     isOpen: () => !$el('lyrics-modal').classList.contains('hidden'),
     set: on => {
       const modal = $el('lyrics-modal');
-      if (on) { modal.classList.remove('hidden'); return; }
+      if (on) { modal.classList.remove('hidden'); modal.requestFullscreen?.().catch(() => { }); closeLyricsMoreMenu(); return; }
+      closeLyricsMoreMenu();
       if (document.fullscreenElement) document.exitFullscreen().catch(() => { }).finally(() => modal.classList.add('hidden'));
       else modal.classList.add('hidden');
     }
@@ -652,6 +653,122 @@ function overlayClose(name) {
   o.set(false);
   if (NAV.ready && history.state?.o === name) history.back(); // เอารายการของหน้าต่างนี้ออกจากประวัติ
 }
+// ============================================================
+// เมนู "เพิ่มเติม" ในหน้าเนื้อเพลง (ปุ่มจุดไข่ปลา 3 จุด)
+// ============================================================
+const likeCache = new Map(); // trackId -> true/false กันถามซ้ำ
+let sleepTimer = null, sleepAt = 0, sleepLabelTimer = null;
+
+function closeLyricsMoreMenu() { document.getElementById('lyrics-more-menu')?.classList.add('hidden'); }
+
+async function isTrackLiked(id) {
+  if (likeCache.has(id)) return likeCache.get(id);
+  try { const r = await fetchWebApi(`v1/me/tracks/contains?ids=${id}`); const v = !!r?.[0]; likeCache.set(id, v); return v; }
+  catch (e) { return false; }
+}
+
+async function refreshLikeButton(track) {
+  const btn = document.getElementById('btn-like-track'), label = document.getElementById('menu-like-label');
+  if (!btn || !track) return;
+  const liked = await isTrackLiked(track.id);
+  btn.classList.toggle('liked', liked);
+  btn.title = liked ? 'เลิกถูกใจ' : 'ถูกใจเพลงนี้';
+  if (label) label.textContent = liked ? 'เลิกถูกใจเพลงนี้' : 'เพิ่มไปยังรายการโปรด';
+}
+
+async function toggleLikeTrack(track) {
+  if (!track) return;
+  const liked = await isTrackLiked(track.id);
+  try {
+    await fetchWebApi(`v1/me/tracks?ids=${track.id}`, liked ? 'DELETE' : 'PUT');
+    likeCache.set(track.id, !liked);
+    showToast(liked ? '💔 เลิกถูกใจแล้ว' : '❤️ เพิ่มไปยังรายการโปรดแล้ว', 'info');
+    refreshLikeButton(track);
+  } catch (e) { console.error('Like error:', e); showToast('❌ ทำรายการไม่สำเร็จ', 'error'); }
+}
+
+async function createPlaylistWithTrack(track) {
+  if (!track) return;
+  const name = (prompt('ตั้งชื่อเพลย์ลิสต์ใหม่', track.name ? `เพลย์ลิสต์ของ ${track.name}` : '') || '').trim();
+  if (!name) return;
+  try {
+    const user = currentUser || await getUserProfile();
+    const pl = await fetchWebApi(`v1/users/${user.id}/playlists`, 'POST', { name, public: false });
+    await fetchWebApi(`v1/playlists/${pl.id}/tracks`, 'POST', { uris: [track.uri || `spotify:track:${track.id}`] });
+    showToast(`✅ สร้างเพลย์ลิสต์ "${name}" แล้ว`, 'info');
+  } catch (e) { console.error('Create playlist error:', e); showToast('❌ สร้างเพลย์ลิสต์ไม่สำเร็จ', 'error'); }
+}
+
+async function shareTrack(track) {
+  if (!track) return;
+  const url = `https://open.spotify.com/track/${track.id}`;
+  if (navigator.share) { try { await navigator.share({ title: track.name, text: track.artists?.map(a => a.name).join(', '), url }); return; } catch (e) { return; } }
+  try { await navigator.clipboard.writeText(url); showToast('✅ คัดลอกลิงก์เพลงแล้ว', 'info'); } catch (e) { showToast(url, 'info'); }
+}
+
+function sleepLabelUpdate() {
+  const label = document.getElementById('menu-sleep-label'); if (!label) return;
+  if (!sleepTimer) { label.textContent = 'ตั้งเวลาหยุดเล่น'; clearInterval(sleepLabelTimer); return; }
+  const left = Math.max(0, Math.round((sleepAt - Date.now()) / 60000));
+  label.textContent = `หยุดเล่นใน ${left} นาที (แตะเพื่อยกเลิก)`;
+}
+function cancelSleepTimer() { clearTimeout(sleepTimer); sleepTimer = null; sleepLabelUpdate(); showToast('ยกเลิกการตั้งเวลาหยุดเล่นแล้ว', 'info'); }
+function setSleepTimer(minutes) {
+  clearTimeout(sleepTimer);
+  sleepAt = Date.now() + minutes * 60000;
+  sleepTimer = setTimeout(() => { playbackPause(); sleepTimer = null; sleepLabelUpdate(); showToast('⏸ หยุดเล่นตามเวลาที่ตั้งไว้', 'info'); }, minutes * 60000);
+  clearInterval(sleepLabelTimer); sleepLabelTimer = setInterval(sleepLabelUpdate, 30000);
+  sleepLabelUpdate();
+  showToast(`🌙 ตั้งเวลาหยุดเล่นใน ${minutes} นาทีแล้ว`, 'info');
+}
+
+function renderSleepOptions() {
+  const box = document.getElementById('lyrics-more-menu'); if (!box) return;
+  const opts = [5, 15, 30, 60];
+  box.innerHTML = `
+    <button type="button" class="lyrics-more-item" id="sleep-back"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"/></svg><span>กลับ</span></button>
+    <div class="lyrics-more-sep"></div>
+    ${opts.map(m => `<button type="button" class="lyrics-more-item sleep-opt" data-min="${m}"><span>${m} นาที</span></button>`).join('')}
+    <button type="button" class="lyrics-more-item sleep-opt" data-min="track"><span>จบเพลงนี้</span></button>
+    ${sleepTimer ? '<div class="lyrics-more-sep"></div><button type="button" class="lyrics-more-item" id="sleep-cancel"><span>ยกเลิกการตั้งเวลา</span></button>' : ''}
+  `;
+  box.querySelector('#sleep-back').onclick = renderMainMenu;
+  box.querySelectorAll('.sleep-opt').forEach(b => b.onclick = () => {
+    const v = b.dataset.min;
+    if (v === 'track') { const d = seekState.duration, p = currentSeekPosition(); setSleepTimer(Math.max(0.1, (d - p) / 60000)); }
+    else setSleepTimer(Number(v));
+    closeLyricsMoreMenu();
+  });
+  box.querySelector('#sleep-cancel')?.addEventListener('click', () => { cancelSleepTimer(); closeLyricsMoreMenu(); });
+}
+
+function renderMainMenu() {
+  const box = document.getElementById('lyrics-more-menu'); if (!box) return;
+  box.innerHTML = document.getElementById('lyrics-more-menu-template').innerHTML;
+  bindMainMenuEvents();
+  refreshLikeButton(currentTrackData);
+}
+
+function bindMainMenuEvents() {
+  document.getElementById('menu-like-track')?.addEventListener('click', () => { toggleLikeTrack(currentTrackData); closeLyricsMoreMenu(); });
+  document.getElementById('menu-add-to-playlist')?.addEventListener('click', () => { closeLyricsMoreMenu(); if (currentTrackData) { currentContextTrack = currentTrackData; document.getElementById('menu-add-playlist').click(); } });
+  document.getElementById('menu-new-playlist')?.addEventListener('click', () => { closeLyricsMoreMenu(); createPlaylistWithTrack(currentTrackData); });
+  document.getElementById('menu-share-track')?.addEventListener('click', () => { closeLyricsMoreMenu(); shareTrack(currentTrackData); });
+  document.getElementById('menu-sleep-timer')?.addEventListener('click', renderSleepOptions);
+}
+
+function setupLyricsMoreMenu() {
+  const btn = document.getElementById('btn-lyrics-more'), box = document.getElementById('lyrics-more-menu');
+  if (!btn || !box) return;
+  // เก็บ HTML ตั้งต้นของเมนูไว้ ใช้สร้างกลับหลังออกจากเมนูย่อย (ตั้งเวลาหยุดเล่น)
+  const tpl = document.createElement('template'); tpl.id = 'lyrics-more-menu-template'; tpl.innerHTML = box.innerHTML;
+  document.body.appendChild(tpl);
+  bindMainMenuEvents();
+  btn.addEventListener('click', e => { e.stopPropagation(); const willOpen = box.classList.contains('hidden'); closeLyricsMoreMenu(); if (willOpen) { renderMainMenu(); box.classList.remove('hidden'); } });
+  document.addEventListener('click', e => { if (!e.target.closest('.lyrics-more-wrap')) closeLyricsMoreMenu(); });
+  document.getElementById('btn-like-track')?.addEventListener('click', () => toggleLikeTrack(currentTrackData));
+}
+
 function toggleLyricsModal() { if (OVERLAYS.lyrics.isOpen()) overlayClose('lyrics'); else overlayOpen('lyrics'); }
 window.closePlaylistModal = () => overlayClose('playlist');
 
@@ -1280,11 +1397,7 @@ function setupEventListeners() {
   });
   document.getElementById('btn-close-lyrics').addEventListener('click', () => toggleLyricsModal());
   setupTvShare();
-  const btnFs = document.getElementById('btn-fullscreen-lyrics');
-  if (btnFs) {
-    btnFs.addEventListener('click', () => { const modal = document.getElementById('lyrics-modal'); if (!document.fullscreenElement) modal.requestFullscreen().catch(err => console.warn('Fullscreen error:', err)); else document.exitFullscreen(); });
-    document.addEventListener('fullscreenchange', () => { const enter = document.getElementById('icon-fullscreen-enter'), exit = document.getElementById('icon-fullscreen-exit'); if (document.fullscreenElement) { enter?.classList.add('hidden'); exit?.classList.remove('hidden'); } else { enter?.classList.remove('hidden'); exit?.classList.add('hidden'); } });
-  }
+  setupLyricsMoreMenu();
   document.getElementById('btn-lyrics-play-pause')?.addEventListener('click', togglePlay);
   document.getElementById('btn-lyrics-next')?.addEventListener('click', nextTrack);
   document.getElementById('btn-lyrics-prev')?.addEventListener('click', previousTrack);
@@ -1656,7 +1769,7 @@ function handlePlayerStateChange(state) {
   const track = state.track_window.current_track;
   const lyricsContainer = document.getElementById('lyrics-container');
   const containerEmpty = !lyricsContainer || lyricsContainer.children.length === 0;
-  if (track && (!currentTrackData || currentTrackData.id !== track.id || containerEmpty)) { currentTrackData = track; setupLyricsComponent(track); }
+  if (track && (!currentTrackData || currentTrackData.id !== track.id || containerEmpty)) { currentTrackData = track; setupLyricsComponent(track); refreshLikeButton(track); }
   updateLyricsComponent(state.position, state.duration, state.paused);
 }
 
