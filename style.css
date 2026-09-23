@@ -1961,3 +1961,45 @@ am-lyrics {
   .hero-banner { grid-template-columns: 1fr; }
   .hero-card { height: 190px; }
 }
+
+/* ============================================================
+   หน้าเนื้อเพลง: ปุ่มถูกใจ (หัวใจ) + เมนูเพิ่มเติม (จุดไข่ปลา 3 จุด)
+   ============================================================ */
+.lyrics-title-row { display: flex; align-items: center; gap: .6rem; }
+.btn-like { color: var(--text-main); opacity: .8; flex-shrink: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
+.btn-like svg { width: 22px; height: 22px; }
+.btn-like:hover { opacity: 1; }
+.btn-like.liked { color: var(--accent); opacity: 1; }
+.btn-like.liked svg path { fill: var(--accent); }
+
+.lyrics-more-wrap { position: relative; }
+.lyrics-more-menu {
+  position: absolute;
+  top: calc(100% + .5rem);
+  right: 0;
+  z-index: 40;
+  min-width: 250px;
+  padding: .5rem;
+  border-radius: 16px;
+  background: rgba(28, 28, 32, .92);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .5);
+}
+.lyrics-more-menu.hidden { display: none; }
+.lyrics-more-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  padding: .65rem .75rem;
+  border-radius: 10px;
+  color: var(--text-main);
+  font: inherit;
+  font-size: .92rem;
+  text-align: left;
+  background: transparent;
+}
+.lyrics-more-item:hover { background: rgba(255, 255, 255, .08); }
+.lyrics-more-item svg { width: 20px; height: 20px; flex-shrink: 0; opacity: .85; }
+.lyrics-more-sep { height: 1px; margin: .35rem .5rem; background: var(--glass-border); }
