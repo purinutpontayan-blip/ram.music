@@ -197,7 +197,7 @@ async function playTrack(uri, contextUri) {
   if (!isPremium) { showToast('⚠️ ต้องใช้ Spotify Premium เพื่อเล่นเพลง', 'warning'); return; }
   if (!deviceId) { showToast('⚠️ Player ยังไม่พร้อม กรุณารอสักครู่', 'warning'); return; }
   try {
-    const body = contextUri ? { context_uri: contextUri, offset: { uri } } : { uris: [uri] };
+    const body = contextUri ? { context_uri: contextUri, ...(uri ? { offset: { uri } } : {}) } : { uris: [uri] };
     await fetchWebApi(`v1/me/player/play?device_id=${remote.id || deviceId}`, 'PUT', body);
   } catch (e) { showToast('❌ ไม่สามารถเล่นเพลงนี้ได้', 'error'); }
 }
@@ -320,6 +320,7 @@ function showView(viewId) {
   document.getElementById('search-bar-container').classList.toggle('hidden', viewId !== 'view-search');
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.target === viewId.replace('view-', '')));
   if (viewId === 'view-ranking') startRankingView(); else stopRankingView();
+  if (viewId === 'view-playlists') loadMyPlaylists();
 }
 function renderUserProfile(profile) {
   const container = document.getElementById('user-profile');
@@ -365,6 +366,51 @@ function renderUserProfile(profile) {
   menu.querySelector('#menu-switch-account').addEventListener('click', () => { closeMenu(); switchAccount(); });
   menu.querySelector('#menu-logout').addEventListener('click', () => { closeMenu(); logout(); });
 }
+// การ์ดใหญ่ 2 ใบด้านบนสุดของหน้าหลัก (คล้าย Apple Music) ใช้เพลงที่ฟังล่าสุด 2 เพลง
+function renderHeroBanner(historyData, onPlay) {
+  const box = document.getElementById('hero-banner'); if (!box) return;
+  box.innerHTML = '';
+  const tracks = (historyData?.items || []).map(i => i.track).filter((t, idx, arr) => t && arr.findIndex(x => x.uri === t.uri) === idx).slice(0, 2);
+  if (!tracks.length) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  tracks.forEach((t, i) => {
+    const card = document.createElement('div'); card.className = 'hero-card';
+    const img = t.album?.images?.[0]?.url || '';
+    card.style.backgroundImage = img ? `url("${img}")` : '';
+    const tag = document.createElement('div'); tag.className = 'hero-tag'; tag.textContent = i === 0 ? 'ฟังล่าสุด' : 'ฟังต่อ';
+    const info = document.createElement('div'); info.className = 'hero-info';
+    const title = document.createElement('div'); title.className = 'hero-title'; title.textContent = t.name;
+    const sub = document.createElement('div'); sub.className = 'hero-sub'; sub.textContent = t.artists.map(a => a.name).join(', ');
+    info.append(title, sub);
+    const play = document.createElement('button'); play.type = 'button'; play.className = 'hero-play'; play.setAttribute('aria-label', 'เล่น');
+    play.innerHTML = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z"/></svg>';
+    play.onclick = e => { e.stopPropagation(); onPlay(t.uri); };
+    card.append(tag, info, play);
+    card.onclick = () => onPlay(t.uri);
+    box.appendChild(card);
+  });
+}
+
+// เพลย์ลิสต์ของฉันเท่านั้น (ไม่รวมที่ไปติดตามคนอื่น) เรียงคล้ายอัลบัมในหน้าค้นหา
+async function loadMyPlaylists() {
+  const box = document.getElementById('my-playlists-grid'); if (!box) return;
+  box.innerHTML = '<div class="empty-hint">กำลังโหลด...</div>';
+  try {
+    const user = await getUserProfile();
+    const data = await fetchWebApi('v1/me/playlists?limit=50');
+    const mine = (data?.items || []).filter(p => p && p.owner?.id === user.id);
+    box.innerHTML = '';
+    if (!mine.length) { box.innerHTML = '<div class="empty-hint">คุณยังไม่มีเพลย์ลิสต์ของตัวเอง</div>'; return; }
+    mine.forEach(p => {
+      const div = document.createElement('div'); div.className = 'album-card playlist-card';
+      const img = p.images?.[0]?.url || '';
+      div.innerHTML = `<img src="${img}" alt="${p.name}"><div class="playlist-title">${p.name}</div><div class="playlist-owner">${p.tracks?.total || 0} เพลง</div>`;
+      div.onclick = () => playTrack(undefined, p.uri);
+      box.appendChild(div);
+    });
+  } catch (e) { console.error('My playlists error:', e); box.innerHTML = '<div class="empty-hint">โหลดเพลย์ลิสต์ไม่สำเร็จ</div>'; }
+}
+
 function renderHistory(historyData, onPlay) {
   const container = document.getElementById('history-grid'); container.innerHTML = '';
   if (!historyData?.items) return;
@@ -1201,7 +1247,7 @@ async function init() {
     // ถ้าไม่มีค่า จะลองเริ่ม Player ก่อน แล้วให้ account_error ของ SDK เป็นตัวบอกว่าไม่ใช่ Premium
     const isFree = !!profile?.product && profile.product !== 'premium';
 
-    getRecentlyPlayed().then(d => { if (d) renderHistory(d, playTrack); }).catch(e => console.error('History error:', e));
+    getRecentlyPlayed().then(d => { if (d) { renderHistory(d, playTrack); renderHeroBanner(d, playTrack); } }).catch(e => console.error('History error:', e));
 
     if (isFree) { showPremiumRequiredModal(); return; }
     document.getElementById('player-screen').classList.remove('hidden');
@@ -1217,7 +1263,7 @@ function setupEventListeners() {
   setupWakeLock();
   setupRanking();
   document.getElementById('login-button').addEventListener('click', loginWithSpotify);
-  document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); const v = `view-${e.target.dataset.target}`; navGo(v); showView(v); }));
+  document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); const v = `view-${e.currentTarget.dataset.target}`; navGo(v); showView(v); }));
   let searchTimeout;
   document.getElementById('search-input').addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
