@@ -643,6 +643,9 @@ const OVERLAYS = {
 
 function overlayOpen(name) {
   const o = OVERLAYS[name]; if (!o || o.isOpen()) return;
+  // ป็อปอัพอื่น (เช่น เพิ่มเข้าเพลย์ลิสต์) เป็นพี่น้องของ lyrics-modal ใน DOM ไม่ใช่ลูก
+  // ตอน lyrics-modal อยู่ในโหมดเต็มจอจริงของเบราว์เซอร์ พี่น้องจะไม่ถูกวาดทับขึ้นมาแม้ z-index จะสูงกว่า จึงต้องออกจากเต็มจอก่อน
+  if (name !== 'lyrics' && document.fullscreenElement) document.exitFullscreen().catch(() => { });
   o.set(true);
   if (!NAV.ready) return;
   const base = history.state?.app ? history.state : { app: 1, v: currentViewId(), id: '' };
@@ -651,6 +654,8 @@ function overlayOpen(name) {
 function overlayClose(name) {
   const o = OVERLAYS[name]; if (!o || !o.isOpen()) return;
   o.set(false);
+  // ปิดป็อปอัพที่ซ้อนอยู่แล้ว กลับเข้าเต็มจอเนื้อเพลงต่อ ถ้าหน้าเนื้อเพลงยังเปิดอยู่
+  if (name !== 'lyrics' && OVERLAYS.lyrics.isOpen() && !document.fullscreenElement) document.getElementById('lyrics-modal').requestFullscreen?.().catch(() => { });
   if (NAV.ready && history.state?.o === name) history.back(); // เอารายการของหน้าต่างนี้ออกจากประวัติ
 }
 // ============================================================
@@ -673,6 +678,7 @@ async function refreshLikeButton(track) {
   const liked = await isTrackLiked(track.id);
   btn.classList.toggle('liked', liked);
   btn.title = liked ? 'เลิกถูกใจ' : 'ถูกใจเพลงนี้';
+  document.getElementById('menu-like-track')?.classList.toggle('liked-item', liked);
   if (label) label.textContent = liked ? 'เลิกถูกใจเพลงนี้' : 'เพิ่มไปยังรายการโปรด';
 }
 
@@ -687,9 +693,25 @@ async function toggleLikeTrack(track) {
   } catch (e) { console.error('Like error:', e); showToast('❌ ทำรายการไม่สำเร็จ', 'error'); }
 }
 
+function askText(title, defaultValue) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('text-prompt-modal'), input = document.getElementById('text-prompt-input');
+    document.getElementById('text-prompt-title').textContent = title;
+    input.value = defaultValue || '';
+    modal.classList.remove('hidden');
+    requestAnimationFrame(() => { input.focus(); input.select(); });
+    const done = val => { modal.classList.add('hidden'); ok.removeEventListener('click', onOk); cancel.removeEventListener('click', onCancel); input.removeEventListener('keydown', onKey); resolve(val); };
+    const ok = document.getElementById('text-prompt-ok'), cancel = document.getElementById('text-prompt-cancel');
+    const onOk = () => done(input.value.trim());
+    const onCancel = () => done(null);
+    const onKey = e => { if (e.key === 'Enter') onOk(); else if (e.key === 'Escape') onCancel(); };
+    ok.addEventListener('click', onOk); cancel.addEventListener('click', onCancel); input.addEventListener('keydown', onKey);
+  });
+}
+
 async function createPlaylistWithTrack(track) {
   if (!track) return;
-  const name = (prompt('ตั้งชื่อเพลย์ลิสต์ใหม่', track.name ? `เพลย์ลิสต์ของ ${track.name}` : '') || '').trim();
+  const name = (await askText('ตั้งชื่อเพลย์ลิสต์ใหม่', track.name ? `เพลย์ลิสต์ของ ${track.name}` : '') || '').trim();
   if (!name) return;
   try {
     const user = currentUser || await getUserProfile();
@@ -726,7 +748,7 @@ function renderSleepOptions() {
   const box = document.getElementById('lyrics-more-menu'); if (!box) return;
   const opts = [5, 15, 30, 60];
   box.innerHTML = `
-    <button type="button" class="lyrics-more-item" id="sleep-back"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"/></svg><span>กลับ</span></button>
+    <button type="button" class="lyrics-more-item" id="sleep-back"><span class="lyrics-more-item-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"/></svg></span><span>กลับ</span></button>
     <div class="lyrics-more-sep"></div>
     ${opts.map(m => `<button type="button" class="lyrics-more-item sleep-opt" data-min="${m}"><span>${m} นาที</span></button>`).join('')}
     <button type="button" class="lyrics-more-item sleep-opt" data-min="track"><span>จบเพลงนี้</span></button>
