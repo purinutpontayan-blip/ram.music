@@ -378,6 +378,8 @@ h3 {
   padding-bottom: .75rem;
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(to right, black 0, black calc(100% - 32px), transparent 100%);
+  mask-image: linear-gradient(to right, black 0, black calc(100% - 32px), transparent 100%);
 }
 
 .history-grid .history-card {
@@ -1961,8 +1963,20 @@ am-lyrics {
 .empty-hint { color: var(--text-muted); padding: 1rem 0; }
 
 @media (max-width: 768px) {
-  .hero-banner { grid-template-columns: 1fr; }
-  .hero-card { height: 190px; }
+  /* มือถือ: แบนเนอร์ใหญ่ 2 ใบ เลื่อนแนวนอนแทนการเรียงซ้อนกันเป็นแถวยาว พร้อมขอบขวาจางๆ บอกว่ายังเลื่อนต่อได้ */
+  .hero-banner {
+    display: flex;
+    grid-template-columns: unset;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 1rem;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: .25rem;
+    -webkit-mask-image: linear-gradient(to right, black 0, black calc(100% - 32px), transparent 100%);
+    mask-image: linear-gradient(to right, black 0, black calc(100% - 32px), transparent 100%);
+  }
+  .hero-card { flex: 0 0 84%; height: 190px; scroll-snap-align: start; }
 }
 
 /* ============================================================
