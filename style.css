@@ -1906,7 +1906,10 @@ am-lyrics {
 .nav-item.active .nav-icon { color: var(--accent); opacity: 1; }
 
 /* เพลเยอร์แบบแคปซูลลอยกลางล่างจอ เหมือน Apple Music บนเว็บ/เดสก์ท็อป */
-#app-screen { grid-template-rows: 1fr 0; grid-template-areas: "sidebar main" "sidebar main"; }
+/* เฉพาะจอกว้าง (คอม) เท่านั้น ไม่งั้นจะไปทับกฎของมือถือที่อยู่ก่อนหน้านี้ในไฟล์ (เพราะ CSS ใช้อันที่มาทีหลังเมื่อความเฉพาะเจาะจงเท่ากัน) */
+@media (min-width: 769px) {
+  #app-screen { grid-template-rows: 1fr 0; grid-template-areas: "sidebar main" "sidebar main"; }
+}
 .player {
   position: fixed;
   left: calc(var(--sidebar-width) + (100% - var(--sidebar-width)) / 2);
