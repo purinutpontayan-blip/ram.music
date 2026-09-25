@@ -1,7 +1,7 @@
 //============================================================
 // CONFIG — Spotify Client ID
 // ============================================================
-const CLIENT_ID = '0c0581fc99704656885f8fbc84d0fcf6'; // Spotify Client ID — แก้ค่านี้ตรงนี้
+const CLIENT_ID = '348f543b314b4a6e8596b4c20e41cdab'; // Spotify Client ID — แก้ค่านี้ตรงนี้
 const REDIRECT_URI = window.location.origin;
 
 // ---------- สัญลักษณ์ E (Explicit = เนื้อหาไม่เหมาะสม) ----------
