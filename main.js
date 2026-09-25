@@ -94,16 +94,35 @@ function switchAccount() {
 // ============================================================
 // SPOTIFY API
 // ============================================================
-async function fetchWebApi(endpoint, method = 'GET', body) {
-  const token = localStorage.getItem('spotify_access_token');
-  const res = await fetch(`https://api.spotify.com/${endpoint}`, { headers: { Authorization: `Bearer ${token}` }, method, body: body ? JSON.stringify(body) : undefined });
-  if (res.status === 401) { localStorage.removeItem('spotify_access_token'); window.location.reload(); }
-  if (!res.ok) { const err = new Error(`API error: ${res.status}`); err.status = res.status; throw err; }
-  if (res.status === 204) return null;
-  // บาง endpoint (เช่น PUT /me/library) ตอบ 200 แต่ body ว่าง — ห้าม res.json() ตรงๆ ไม่งั้นจะ throw ทั้งที่สำเร็จแล้ว
-  const text = await res.text();
-  if (!text) return null;
-  try { return JSON.parse(text); } catch (e) { return null; }
+// เมื่อ Spotify ตอบ 429 (เรียก API ถี่เกินไป) ทุก endpoint ต้องหยุดรอร่วมกันตามเวลาที่ Spotify บอกไว้ (Retry-After)
+// ไม่งั้นคำขอที่ยิงพร้อมกันจะโดน 429 ซ้ำวนไปเรื่อยๆ จนเข้าหน้าศิลปิน/อัลบั้มไม่ได้เลยแบบที่เจอ
+let rateLimitUntil = 0;
+let apiQueue = Promise.resolve();
+async function fetchWebApi(endpoint, method = 'GET', body, _retried) {
+  const execute = async () => {
+    let wait = rateLimitUntil - Date.now();
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    const token = localStorage.getItem('spotify_access_token');
+    const res = await fetch(`https://api.spotify.com/${endpoint}`, { headers: { Authorization: `Bearer ${token}` }, method, body: body ? JSON.stringify(body) : undefined });
+    if (res.status === 401) { localStorage.removeItem('spotify_access_token'); window.location.reload(); }
+    if (res.status === 429) {
+      const retryAfter = Math.min(15, Math.max(1, Number(res.headers.get('Retry-After')) || 3));
+      rateLimitUntil = Math.max(rateLimitUntil, Date.now() + retryAfter * 1000);
+      showToast('โอ๊ะ! เกิดข้อผิดพลาดบางอย่าง กรุณาลองอีกครั้ง', 'error');
+      const err = new Error('โอ๊ะ! เกิดข้อผิดพลาดบางอย่าง กรุณาลองอีกครั้ง'); err.status = 429; throw err;
+    }
+    if (!res.ok) { const err = new Error(`API error: ${res.status}`); err.status = res.status; throw err; }
+    if (res.status === 204) return null;
+    const text = await res.text();
+    if (!text) return null;
+    try { return JSON.parse(text); } catch (e) { return null; }
+  };
+  return new Promise((resolve, reject) => {
+    apiQueue = apiQueue.then(async () => {
+      try { resolve(await execute()); } catch (e) { reject(e); }
+      await new Promise(r => setTimeout(r, 150));
+    });
+  });
 }
 const getUserProfile = () => fetchWebApi('v1/me');
 const getRecentlyPlayed = () => fetchWebApi('v1/me/player/recently-played?limit=20');
@@ -196,10 +215,35 @@ async function transferPlaybackHere(device_id) {
 async function playTrack(uri, contextUri) {
   if (!isPremium) { showToast('⚠️ ต้องใช้ Spotify Premium เพื่อเล่นเพลง', 'warning'); return; }
   if (!deviceId) { showToast('⚠️ Player ยังไม่พร้อม กรุณารอสักครู่', 'warning'); return; }
+  setPlayLoading(true); // แสดงอนิเมชันโหลดทันทีที่กดเล่น จนกว่าเพลงจะเริ่มเล่นจริง (state เปลี่ยน)
   try {
+    let trackId = null;
+    if (uri && uri.startsWith('spotify:track:')) {
+      trackId = uri.split(':')[2];
+    } else if (contextUri && contextUri.startsWith('spotify:track:')) {
+      trackId = contextUri.split(':')[2];
+    }
+    
+    if (trackId && (!currentTrackData || currentTrackData.id !== trackId)) {
+        try {
+            const track = await fetchWebApi(`v1/tracks/${trackId}`);
+            if (track) {
+                currentTrackData = track;
+                await setupLyricsComponent(track);
+            }
+        } catch (e) { console.error("Error preloading lyrics", e); }
+    }
+
     const body = contextUri ? { context_uri: contextUri, ...(uri ? { offset: { uri } } : {}) } : { uris: [uri] };
     await fetchWebApi(`v1/me/player/play?device_id=${remote.id || deviceId}`, 'PUT', body);
-  } catch (e) { showToast('❌ ไม่สามารถเล่นเพลงนี้ได้', 'error'); }
+  } catch (e) { 
+      setPlayLoading(false); 
+      if (e && e.status !== 429) showToast('❌ ไม่สามารถเล่นเพลงนี้ได้', 'error'); 
+  }
+}
+
+function setPlayLoading(on) {
+  document.querySelectorAll('.btn-play').forEach(b => b.classList.toggle('is-loading', on));
 }
 async function remoteCmd(kind, arg) {
   const q = `device_id=${encodeURIComponent(remote.id)}`;
@@ -246,7 +290,7 @@ async function pollRemote() {
 
 function enterRemote(dev) {
   remote.id = dev.id; remote.name = dev.name; remote.last = null;
-  clearInterval(remote.timer); remote.timer = setInterval(pollRemote, 2500);
+  clearInterval(remote.timer); remote.timer = setInterval(pollRemote, 4000); // ยืดจังหวะเรียก Spotify ลง ลดโอกาสโดน 429
   remoteUiRefresh(); setTimeout(pollRemote, 800);
 }
 function leaveRemote() {
@@ -454,7 +498,7 @@ function renderSearchResults(results, onPlay, onArtistClick, onAlbumClick) {
 function trackRowActions(track) {
   const wrap = document.createElement('div'); wrap.className = 'track-item-actions';
   const queue = document.createElement('button'); queue.type = 'button'; queue.className = 'row-icon-btn row-queue-btn'; queue.title = 'เพิ่มเข้าคิวเล่นถัดไป';
-  queue.innerHTML = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M15,6H3V8H15V6M15,10H3V12H15V10M3,16H11V14H3V16M17,14V17H14V19H17V22H19V19H22V17H19V14H17Z"/></svg>';
+  queue.innerHTML = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M15,6H3V8H15V6M15,10H3V12H15V10M3,16H11V14H3V16Z"/></svg>';
   queue.onclick = e => { e.stopPropagation(); addToQueue(track); };
   wrap.appendChild(queue);
   return wrap;
@@ -472,6 +516,52 @@ async function addToQueue(track) {
   }
 }
 
+// ---------- เพลย์ลิสต์แนะนำประจำวัน (จันทร์-ศุกร์) ----------
+// ใช้เพลย์ลิสต์ทางการของ Spotify (ID สาธารณะ คงที่ ไม่ผูกกับบัญชีผู้ใช้) สลับตามวัน
+// ยืนยันแล้วว่าใช้ได้จริง 2 รายการ (ชาร์ตไทย) หากต้องการเพิ่มวันละเพลย์ลิสต์ต่างกันจริงๆ
+// ให้หา Playlist ID จาก Spotify (คลิกขวาเพลย์ลิสต์ > Share > Copy link) แล้วใส่เพิ่มในนี้
+const DAILY_CHART_PLAYLISTS = {
+  1: { id: '37i9dQZEVXbMnz8KIWsvf9', label: 'จันทร์' }, // Top 50 - Thailand
+  2: { id: '37i9dQZEVXbL0GavIqMTeb', label: 'อังคาร' }, // Viral 50 - Thailand
+  3: { id: '37i9dQZEVXbMnz8KIWsvf9', label: 'พุธ' },
+  4: { id: '37i9dQZEVXbL0GavIqMTeb', label: 'พฤหัสบดี' },
+  5: { id: '37i9dQZEVXbMnz8KIWsvf9', label: 'ศุกร์' },
+  0: { id: '37i9dQZEVXbMnz8KIWsvf9', label: 'อาทิตย์' }, // เสาร์-อาทิตย์ ใช้ของจันทร์แทน กันหน้าว่าง
+  6: { id: '37i9dQZEVXbL0GavIqMTeb', label: 'เสาร์' }
+};
+
+async function loadDailyChart() {
+  const box = document.getElementById('daily-charts'); if (!box) return;
+  const conf = DAILY_CHART_PLAYLISTS[new Date().getDay()];
+  try {
+    const fields = 'name,uri,external_urls,tracks.items(track(id,name,uri,duration_ms,explicit,artists(name),album(images)))';
+    const pl = await fetchWebApi(`v1/playlists/${conf.id}?market=TH&fields=${encodeURIComponent(fields)}`);
+    const tracks = (pl?.tracks?.items || []).map(it => it.track).filter(Boolean).slice(0, 10);
+    if (!tracks.length) { box.innerHTML = ''; return; }
+    box.innerHTML = '';
+    
+    const heading = document.createElement('div');
+    heading.className = 'daily-chart-heading';
+    heading.innerHTML = `
+      <div class="daily-chart-title">เพลย์ลิสต์ที่คุณอาจถูกใจประจำวัน${conf.label}</div>
+      <div class="daily-chart-source">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/></svg>
+        <span>อ้างอิงจาก <a href="${pl.external_urls?.spotify || '#'}" target="_blank">เพลย์ลิสต์ทางการ Spotify</a></span>
+      </div>
+    `;
+    box.appendChild(heading);
+
+    const list = rkEl('div', 'tracks-list daily-chart-list');
+    tracks.forEach((t, i) => {
+      const div = document.createElement('div'); div.className = 'track-item';
+      div.innerHTML = `<div class="chart-rank">${i + 1}</div><img src="${t.album?.images?.[0]?.url || ''}" alt="${t.name}"><div class="track-item-info"><div class="track-item-title">${t.name}</div><div class="track-item-artist">${t.explicit ? '<span class="rank-explicit" title="เนื้อหาไม่เหมาะสม (Explicit)">E</span>' : ''}${t.artists.map(a => a.name).join(', ')}</div></div>`;
+      div.appendChild(trackRowActions(t));
+      div.onclick = () => playTrack(t.uri, pl.uri);
+      list.appendChild(div);
+    });
+    box.appendChild(list);
+  } catch (e) { console.error('Daily chart error:', e); box.innerHTML = ''; } // โหลดไม่สำเร็จ (เช่นเพลย์ลิสต์ถูกลบ/ย้าย) ให้ข้ามไปเงียบๆ ไม่ทำให้หน้าแรกพัง
+}
 function renderArtistView(artist, topTracks, albums, onPlay, onAlbumClick, isFollowing, onToggleFollow) {
   const header = document.getElementById('artist-header');
   const imgUrl = artist.images?.[0]?.url || '';
@@ -882,7 +972,17 @@ const LYRICS_SHADOW_CSS = `
 .lyrics-line.bg-expanded .background-vocal-wrap { opacity: 1 !important; }
 .lyrics-line.bg-expanded.bg-after .main-vocal-container,
 .lyrics-line.bg-expanded.bg-before .main-vocal-container { transform: none !important; }
+/* ซ่อนแถบเครื่องมือของวิดเจ็ตเนื้อเพลง (โรมันจิ/แปล/ดาวน์โหลด) และท้ายเครดิต — เหลือไว้แค่ชื่อผู้แต่งเพลง */
+.lyrics-header, .widget-header { display: none !important; }
+.lyrics-footer > div:not(.songwriters-info) { display: none !important; }
+.songwriters-info { display: block !important; }
 `;
+
+// เปลี่ยนป้าย "Songwriters" ของวิดเจ็ตเป็น "ผู้แต่ง:" (ข้อความภายใน shadow DOM ของวิดเจ็ต แก้ผ่าน CSS ไม่ได้ ต้องแก้ที่ตัวอักษรโดยตรง)
+function relabelSongwriters(root) {
+  const b = root.querySelector('.songwriters-info b');
+  if (b && b.textContent !== 'ผู้แต่ง:') b.textContent = 'ผู้แต่ง:';
+}
 
 function mountLyricsEl(container, attrs) {
   container.innerHTML = '';
@@ -892,7 +992,12 @@ function mountLyricsEl(container, attrs) {
   container.appendChild(el);
   const waitForShadow = setInterval(() => {
     if (!el.isConnected) { clearInterval(waitForShadow); return; }
-    if (el.shadowRoot) { clearInterval(waitForShadow); const st = document.createElement('style'); st.textContent = LYRICS_SHADOW_CSS; el.shadowRoot.appendChild(st); fixThaiSpans(el.shadowRoot); new MutationObserver(() => fixThaiSpans(el.shadowRoot)).observe(el.shadowRoot, { childList: true, subtree: true }); }
+    if (el.shadowRoot) {
+      clearInterval(waitForShadow);
+      const st = document.createElement('style'); st.textContent = LYRICS_SHADOW_CSS; el.shadowRoot.appendChild(st);
+      fixThaiSpans(el.shadowRoot); relabelSongwriters(el.shadowRoot);
+      new MutationObserver(() => { fixThaiSpans(el.shadowRoot); relabelSongwriters(el.shadowRoot); }).observe(el.shadowRoot, { childList: true, subtree: true });
+    }
   }, 50);
   return el;
 }
@@ -970,9 +1075,9 @@ function lrcToTtml(lrc) {
 
 async function setupLyricsComponent(track) {
   const container = document.getElementById('lyrics-container');
-  container.innerHTML = '<div class="lyrics-loading"></div>';
+  container.innerHTML = '<div class="lyrics-loading-spinner"><div class="lyrics-spinner"></div><div class="lyrics-loading-text">กำลังค้นหาเนื้อเพลง...</div></div>';
   const stale = () => !!currentTrackData && currentTrackData.id !== track.id;
-  const cleanTitle = track.name.split(' - ')[0].split(' (')[0];
+  const cleanTitle = track.name;
   const primaryArtist = track.artists[0].name;
   const album = track.album.name;
   let isrc = '';
@@ -981,7 +1086,7 @@ async function setupLyricsComponent(track) {
 
   const lyricsEl = mountLyricsEl(container, {
     'song-title': cleanTitle, 'song-artist': primaryArtist, 'song-album': album, 'song-duration': track.duration_ms,
-    query: `${cleanTitle} ${primaryArtist}`, isrc
+    query: `${cleanTitle} ${primaryArtist}`, isrc, romanize: "true", providers: "lrc.red,lrclib,netease"
   });
   syncLyricsTime();
 
@@ -990,11 +1095,65 @@ async function setupLyricsComponent(track) {
 
   // ได้แต่เนื้อเพลงเปล่า ๆ หรือไม่เจอ -> หาเวอร์ชันซิงก์เอง
   const found = await findSyncedLrc(track);
-  if (!found || stale() || !container.contains(lyricsEl)) return;
+  if (!found || stale() || !container.contains(lyricsEl)) {
+     if (container.contains(lyricsEl)) container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>';
+     return;
+  }
   const ttml = lrcToTtml(found.syncedLyrics);
-  if (!ttml) return;
-  mountLyricsEl(container, { 'song-title': cleanTitle, 'song-artist': primaryArtist, 'song-duration': track.duration_ms, ttml });
+  if (!ttml) {
+     if (container.contains(lyricsEl)) container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>';
+     return;
+  }
+  mountLyricsEl(container, { 'song-title': cleanTitle, 'song-artist': primaryArtist, 'song-duration': track.duration_ms, ttml, romanize: "true" });
   syncLyricsTime();
+}
+
+async function createPlaylistWithTrack(track) {
+  if (!track) return;
+  const modal = document.getElementById('text-prompt-modal');
+  const input = document.getElementById('text-prompt-input');
+  const title = document.getElementById('text-prompt-title');
+  if (!modal || !input) return;
+  
+  title.textContent = 'ตั้งชื่อเพลย์ลิสต์ใหม่';
+  input.value = '';
+  input.placeholder = 'ชื่อเพลย์ลิสต์';
+  overlayOpen('text-prompt');
+  input.focus();
+  
+  const cleanup = () => {
+    document.getElementById('text-prompt-ok').onclick = null;
+    document.getElementById('text-prompt-cancel').onclick = null;
+  };
+  document.getElementById('text-prompt-cancel').onclick = () => {
+    cleanup();
+    overlayClose('text-prompt');
+  };
+  document.getElementById('text-prompt-ok').onclick = async () => {
+    const name = input.value.trim();
+    if (!name) return;
+    cleanup();
+    overlayClose('text-prompt');
+    
+    try {
+      const user = await getUserProfile();
+      const pl = await fetchWebApi(`v1/users/${user.id}/playlists`, 'POST', {
+        name: name,
+        description: 'Created via R Music',
+        public: false
+      });
+      if (pl && pl.id) {
+        await fetchWebApi(`v1/playlists/${pl.id}/tracks`, 'POST', {
+          uris: [track.uri || `spotify:track:${track.id}`]
+        });
+        showToast(`✅ สร้างและเพิ่มเพลงลงใน "${name}" แล้ว`, 'info');
+        loadMyPlaylists();
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('❌ สร้างเพลย์ลิสต์ไม่สำเร็จ', 'error');
+    }
+  };
 }
 
 // ตั้งเวลาปัจจุบันให้ <am-lyrics> ที่เพิ่งสร้างใหม่ทันที ไม่ต้องรอ state ถัดไปจาก Spotify
@@ -1391,6 +1550,7 @@ async function init() {
     const isFree = !!profile?.product && profile.product !== 'premium';
 
     getRecentlyPlayed().then(d => { if (d) { renderHistory(d, playTrack); renderHeroBanner(d, playTrack); } }).catch(e => console.error('History error:', e));
+    loadDailyChart();
 
     if (isFree) { showPremiumRequiredModal(); return; }
     document.getElementById('player-screen').classList.remove('hidden');
@@ -1787,6 +1947,7 @@ function updateMediaSession(state) {
 
 function handlePlayerStateChange(state) {
   if (!state) return;
+  setPlayLoading(false);
   window._lastState = state;
   syncSeekFromState(state);
   updatePlayerUI(state);
