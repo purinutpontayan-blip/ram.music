@@ -994,8 +994,27 @@ function relabelSongwriters(root) {
   if (b && b.textContent !== 'ผู้แต่ง:') b.textContent = 'ผู้แต่ง:';
 }
 
-function mountLyricsEl(container, attrs) {
+// ข้อมูล "ผู้แต่ง" ของวิดเจ็ต (.songwriters-info) อยู่ท้ายสุดของเนื้อเพลงที่เลื่อนได้ ซึ่งโดน mask ของ .lyrics-right
+// บังไว้ถาวรจนอ่านไม่ออก — ก็อปข้อความออกมาแสดงเป็นแถบนิ่งไว้ใต้เนื้อเพลงแทน (นอกโซนที่ถูก mask)
+// ถ้าผู้ให้บริการเนื้อเพลงไม่มีชื่อผู้แต่งมาให้ (เช่นตอนใช้เนื้อเพลงซิงก์สำรองจาก LRCLIB) จะโชว์ชื่อศิลปินของเพลงแทน
+function updateLyricsAuthors(root, track) {
+  const box = document.getElementById('lyrics-authors');
+  if (!box) return;
+  let names = '';
+  const sw = root?.querySelector('.songwriters-info');
+  if (sw) {
+    const clone = sw.cloneNode(true);
+    clone.querySelector('b')?.remove();
+    names = clone.textContent.replace(/\s+/g, ' ').trim();
+  }
+  if (!names && track) names = (track.artists || []).map(a => a.name).filter(Boolean).join(', ');
+  if (names) { box.textContent = `ผู้แต่ง: ${names}`; box.classList.remove('hidden'); }
+  else { box.textContent = ''; box.classList.add('hidden'); }
+}
+
+function mountLyricsEl(container, attrs, track) {
   container.innerHTML = '';
+  document.getElementById('lyrics-authors')?.classList.add('hidden');
   const el = document.createElement('am-lyrics');
   Object.entries(attrs).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') el.setAttribute(k, String(v)); });
   el.setAttribute('autoscroll', 'true'); el.setAttribute('interpolate', 'true'); el.setAttribute('font-family', "'Kanit', sans-serif");
@@ -1005,8 +1024,8 @@ function mountLyricsEl(container, attrs) {
     if (el.shadowRoot) {
       clearInterval(waitForShadow);
       const st = document.createElement('style'); st.textContent = LYRICS_SHADOW_CSS; el.shadowRoot.appendChild(st);
-      fixThaiSpans(el.shadowRoot); relabelSongwriters(el.shadowRoot);
-      new MutationObserver(() => { fixThaiSpans(el.shadowRoot); relabelSongwriters(el.shadowRoot); }).observe(el.shadowRoot, { childList: true, subtree: true });
+      fixThaiSpans(el.shadowRoot); relabelSongwriters(el.shadowRoot); updateLyricsAuthors(el.shadowRoot, track);
+      new MutationObserver(() => { fixThaiSpans(el.shadowRoot); relabelSongwriters(el.shadowRoot); updateLyricsAuthors(el.shadowRoot, track); }).observe(el.shadowRoot, { childList: true, subtree: true });
     }
   }, 50);
   return el;
@@ -1031,8 +1050,32 @@ function waitLyricsResult(el, timeoutMs = 12000) {
   });
 }
 
-async function lrclibJson(path) {
-  try { const r = await fetch(`https://lrclib.net/api/${path}`); return r.ok ? await r.json() : null; } catch (e) { return null; }
+// LRCLIB ก็โดน 429 ได้เหมือนกันถ้าค้นเนื้อเพลงถี่ ๆ (สลับเพลงเร็ว ๆ) — คิวคำขอให้เรียงกัน
+// + เจอ 429 ก็หยุดรอตาม Retry-After แล้วลองใหม่อีก 1 ครั้งเอง (ไม่ต้องให้ผู้ใช้กดใหม่)
+let lrclibRateLimitUntil = 0;
+let lrclibQueue = Promise.resolve();
+async function lrclibJson(path, _retried) {
+  const execute = async () => {
+    const wait = lrclibRateLimitUntil - Date.now();
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    let res;
+    try { res = await fetch(`https://lrclib.net/api/${path}`); }
+    catch (e) { return null; } // ออฟไลน์ / โดนบล็อก — ไม่ลองซ้ำ เดี๋ยวรอนาน
+    if (res.status === 429) {
+      const retryAfter = Math.min(15, Math.max(1, Number(res.headers.get('Retry-After')) || 3));
+      lrclibRateLimitUntil = Math.max(lrclibRateLimitUntil, Date.now() + retryAfter * 1000);
+      if (!_retried) { await new Promise(r => setTimeout(r, retryAfter * 1000)); return lrclibJson(path, true); }
+      return null;
+    }
+    if (!res.ok) return null;
+    try { return await res.json(); } catch (e) { return null; }
+  };
+  return new Promise(resolve => {
+    lrclibQueue = lrclibQueue.then(async () => {
+      resolve(await execute());
+      await new Promise(r => setTimeout(r, 120)); // เว้นจังหวะระหว่างคำขอ กันยิงรัวจนโดน 429 ซ้ำ
+    }).catch(() => resolve(null));
+  });
 }
 
 // หาเนื้อเพลงซิงก์จาก LRCLIB ลองหลายรูปแบบชื่อ และเลือกเวอร์ชันที่ความยาวใกล้เคียงกับเพลงที่เล่นอยู่ (กันเวลาเพี้ยน)
@@ -1086,6 +1129,7 @@ function lrcToTtml(lrc) {
 async function setupLyricsComponent(track) {
   const container = document.getElementById('lyrics-container');
   container.innerHTML = '<div class="lyrics-loading-spinner"><div class="lyrics-spinner"></div><div class="lyrics-loading-text">กำลังค้นหาเนื้อเพลง...</div></div>';
+  document.getElementById('lyrics-authors')?.classList.add('hidden');
   const stale = () => !!currentTrackData && currentTrackData.id !== track.id;
   const cleanTitle = track.name;
   const primaryArtist = track.artists[0].name;
@@ -1098,7 +1142,7 @@ async function setupLyricsComponent(track) {
   const lyricsEl = mountLyricsEl(container, {
     'song-title': cleanTitle, 'song-artist': primaryArtist, 'song-album': album, 'song-duration': track.duration_ms,
     query: queryStr, isrc, romanize: "true", providers: "lrc.red,lrclib,netease"
-  });
+  }, track);
   syncLyricsTime();
 
   const result = await waitLyricsResult(lyricsEl);
@@ -1107,15 +1151,15 @@ async function setupLyricsComponent(track) {
   // ได้แต่เนื้อเพลงเปล่า ๆ หรือไม่เจอ -> หาเวอร์ชันซิงก์เอง
   const found = await findSyncedLrc(track);
   if (!found || stale() || !container.contains(lyricsEl)) {
-     if (container.contains(lyricsEl)) container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>';
+     if (container.contains(lyricsEl)) { container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>'; document.getElementById('lyrics-authors')?.classList.add('hidden'); }
      return;
   }
   const ttml = lrcToTtml(found.syncedLyrics);
   if (!ttml) {
-     if (container.contains(lyricsEl)) container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>';
+     if (container.contains(lyricsEl)) { container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>'; document.getElementById('lyrics-authors')?.classList.add('hidden'); }
      return;
   }
-  mountLyricsEl(container, { 'song-title': cleanTitle, 'song-artist': primaryArtist, 'song-duration': track.duration_ms, ttml, romanize: "true" });
+  mountLyricsEl(container, { 'song-title': cleanTitle, 'song-artist': primaryArtist, 'song-duration': track.duration_ms, ttml, romanize: "true" }, track);
   syncLyricsTime();
 }
 
