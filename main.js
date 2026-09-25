@@ -1109,54 +1109,6 @@ async function setupLyricsComponent(track) {
   syncLyricsTime();
 }
 
-async function createPlaylistWithTrack(track) {
-  if (!track) return;
-  const modal = document.getElementById('text-prompt-modal');
-  const input = document.getElementById('text-prompt-input');
-  const title = document.getElementById('text-prompt-title');
-  if (!modal || !input) return;
-  
-  title.textContent = 'ตั้งชื่อเพลย์ลิสต์ใหม่';
-  input.value = '';
-  input.placeholder = 'ชื่อเพลย์ลิสต์';
-  overlayOpen('text-prompt');
-  input.focus();
-  
-  const cleanup = () => {
-    document.getElementById('text-prompt-ok').onclick = null;
-    document.getElementById('text-prompt-cancel').onclick = null;
-  };
-  document.getElementById('text-prompt-cancel').onclick = () => {
-    cleanup();
-    overlayClose('text-prompt');
-  };
-  document.getElementById('text-prompt-ok').onclick = async () => {
-    const name = input.value.trim();
-    if (!name) return;
-    cleanup();
-    overlayClose('text-prompt');
-    
-    try {
-      const user = await getUserProfile();
-      const pl = await fetchWebApi(`v1/users/${user.id}/playlists`, 'POST', {
-        name: name,
-        description: 'Created via R Music',
-        public: false
-      });
-      if (pl && pl.id) {
-        await fetchWebApi(`v1/playlists/${pl.id}/tracks`, 'POST', {
-          uris: [track.uri || `spotify:track:${track.id}`]
-        });
-        showToast(`✅ สร้างและเพิ่มเพลงลงใน "${name}" แล้ว`, 'info');
-        loadMyPlaylists();
-      }
-    } catch (e) {
-      console.error(e);
-      showToast('❌ สร้างเพลย์ลิสต์ไม่สำเร็จ', 'error');
-    }
-  };
-}
-
 // ตั้งเวลาปัจจุบันให้ <am-lyrics> ที่เพิ่งสร้างใหม่ทันที ไม่ต้องรอ state ถัดไปจาก Spotify
 function syncLyricsTime() {
   if (typeof seekState === 'undefined') return;
