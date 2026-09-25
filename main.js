@@ -97,6 +97,13 @@ function switchAccount() {
 // เมื่อ Spotify ตอบ 429 (เรียก API ถี่เกินไป) ทุก endpoint ต้องหยุดรอร่วมกันตามเวลาที่ Spotify บอกไว้ (Retry-After)
 // ไม่งั้นคำขอที่ยิงพร้อมกันจะโดน 429 ซ้ำวนไปเรื่อยๆ จนเข้าหน้าศิลปิน/อัลบั้มไม่ได้เลยแบบที่เจอ
 let rateLimitUntil = 0;
+let last429Toast = 0;
+function show429Toast() {
+  if (Date.now() - last429Toast > 5000) {
+    showToast('โอ๊ะ! เกิดข้อผิดพลาดบางอย่าง กรุณาลองอีกครั้ง', 'error');
+    last429Toast = Date.now();
+  }
+}
 let apiQueue = Promise.resolve();
 async function fetchWebApi(endpoint, method = 'GET', body, _retried) {
   const execute = async () => {
@@ -111,7 +118,7 @@ async function fetchWebApi(endpoint, method = 'GET', body, _retried) {
     if (res.status === 429) {
       const retryAfter = Math.min(15, Math.max(1, Number(res.headers.get('Retry-After')) || 3));
       rateLimitUntil = Math.max(rateLimitUntil, Date.now() + retryAfter * 1000);
-      showToast('โอ๊ะ! เกิดข้อผิดพลาดบางอย่าง กรุณาลองอีกครั้ง', 'error');
+      show429Toast();
       const err = new Error('โอ๊ะ! เกิดข้อผิดพลาดบางอย่าง กรุณาลองอีกครั้ง'); err.status = 429; throw err;
     }
     if (!res.ok) { const err = new Error(`API error: ${res.status}`); err.status = res.status; throw err; }
@@ -1901,6 +1908,7 @@ function updateMediaSession(state) {
   on('seekto', d => { if (d && typeof d.seekTime === 'number') playbackSeek(Math.round(d.seekTime * 1000)); });
 }
 
+let lyricsDebounceTimer = null;
 function handlePlayerStateChange(state) {
   if (!state) return;
   setPlayLoading(false);
@@ -1912,7 +1920,15 @@ function handlePlayerStateChange(state) {
   const track = state.track_window.current_track;
   const lyricsContainer = document.getElementById('lyrics-container');
   const containerEmpty = !lyricsContainer || lyricsContainer.children.length === 0;
-  if (track && (!currentTrackData || currentTrackData.id !== track.id || containerEmpty)) { currentTrackData = track; setupLyricsComponent(track); }
+  if (track && (!currentTrackData || currentTrackData.id !== track.id || containerEmpty)) { 
+      currentTrackData = track; 
+      clearTimeout(lyricsDebounceTimer);
+      lyricsDebounceTimer = setTimeout(() => {
+          if (currentTrackData && currentTrackData.id === track.id) {
+              setupLyricsComponent(track); 
+          }
+      }, 500);
+  }
   updateLyricsComponent(state.position, state.duration, state.paused);
 }
 
