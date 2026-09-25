@@ -47,7 +47,7 @@ async function loginWithSpotify(forceDialog = false) {
   const verifier = generateRandomString(128);
   const challenge = await generateCodeChallenge(verifier);
   localStorage.setItem('spotify_verifier', verifier);
-  const params = new URLSearchParams({ client_id: CLIENT_ID, response_type: 'code', redirect_uri: REDIRECT_URI, code_challenge_method: 'S256', code_challenge: challenge, scope: ['user-read-private', 'user-read-email', 'streaming', 'user-read-playback-state', 'user-modify-playback-state', 'user-library-read', 'user-library-modify', 'user-follow-read', 'user-follow-modify', 'playlist-read-private', 'playlist-read-collaborative', 'user-top-read', 'user-read-recently-played'].join(' ') });
+  const params = new URLSearchParams({ client_id: CLIENT_ID, response_type: 'code', redirect_uri: REDIRECT_URI, code_challenge_method: 'S256', code_challenge: challenge, scope: ['user-read-private', 'user-read-email', 'streaming', 'user-read-playback-state', 'user-modify-playback-state', 'user-library-read', 'user-library-modify', 'user-follow-read', 'user-follow-modify', 'playlist-read-private', 'playlist-read-collaborative', 'playlist-modify-private', 'playlist-modify-public', 'user-top-read', 'user-read-recently-played'].join(' ') });
   // show_dialog=true บังคับให้ Spotify แสดงหน้าขออนุญาตใหม่ (ใช้ตอนสลับบัญชี / ขอสิทธิ์เพิ่ม)
   if (forceDialog) params.set('show_dialog', 'true');
   window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
@@ -444,11 +444,34 @@ function renderSearchResults(results, onPlay, onArtistClick, onAlbumClick) {
   results.tracks?.items?.forEach(track => {
     const div = document.createElement('div'); div.className = 'track-item';
     div.innerHTML = `<img src="${track.album.images[0]?.url}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${track.name}</div><div class="track-item-artist">${rememberExplicit(track)}${track.artists.map(a => a.name).join(', ')}</div></div>`;
+    div.appendChild(trackRowActions(track));
     div.onclick = () => onPlay(track.uri);
     div.oncontextmenu = (e) => { e.preventDefault(); if (window.showTrackContextMenu) window.showTrackContextMenu(e, track); };
     container.appendChild(div);
   });
 }
+// ปุ่มถูกใจ + เพิ่มเข้าเพลย์ลิสต์ ต่อท้ายแต่ละแถวเพลง (หน้าค้นหา/ศิลปิน/อัลบั้ม)
+function trackRowActions(track) {
+  const wrap = document.createElement('div'); wrap.className = 'track-item-actions';
+  const queue = document.createElement('button'); queue.type = 'button'; queue.className = 'row-icon-btn row-queue-btn'; queue.title = 'เพิ่มเข้าคิวเล่นถัดไป';
+  queue.innerHTML = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M15,6H3V8H15V6M15,10H3V12H15V10M3,16H11V14H3V16M17,14V17H14V19H17V22H19V19H22V17H19V14H17Z"/></svg>';
+  queue.onclick = e => { e.stopPropagation(); addToQueue(track); };
+  wrap.appendChild(queue);
+  return wrap;
+}
+
+// เพิ่มเพลงเข้าคิวเล่นถัดไป (Spotify Connect) ต้องมีอุปกรณ์กำลังเล่นเพลงอยู่ก่อน
+async function addToQueue(track) {
+  const uri = track.uri || `spotify:track:${track.id}`;
+  try {
+    await fetchWebApi(`v1/me/player/queue?uri=${encodeURIComponent(uri)}&device_id=${remote.id || deviceId}`, 'POST');
+    showToast('➕ เพิ่มเข้าคิวเล่นถัดไปแล้ว', 'info');
+  } catch (e) {
+    console.error('Add to queue error:', e);
+    showToast(e.status === 404 ? '❌ ต้องเล่นเพลงอยู่ก่อนถึงจะเพิ่มเข้าคิวได้' : '❌ เพิ่มเข้าคิวไม่สำเร็จ', 'error');
+  }
+}
+
 function renderArtistView(artist, topTracks, albums, onPlay, onAlbumClick, isFollowing, onToggleFollow) {
   const header = document.getElementById('artist-header');
   const imgUrl = artist.images?.[0]?.url || '';
@@ -465,6 +488,7 @@ function renderArtistView(artist, topTracks, albums, onPlay, onAlbumClick, isFol
   topTracks?.tracks?.slice(0, 5).forEach(track => {
     const div = document.createElement('div'); div.className = 'track-item';
     div.innerHTML = `<img src="${track.album?.images?.[0]?.url || ''}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${track.name}</div><div class="track-item-artist">${rememberExplicit(track)}${track.artists?.map(a => a.name).join(', ')}</div></div>`;
+    div.appendChild(trackRowActions(track));
     div.onclick = () => onPlay(track.uri);
     div.oncontextmenu = (e) => { e.preventDefault(); if (window.showTrackContextMenu) window.showTrackContextMenu(e, track); };
     tracksContainer.appendChild(div);
@@ -489,6 +513,7 @@ function renderAlbumView(album, tracksData, onPlay) {
     const div = document.createElement('div'); div.className = 'track-item';
     const trackWithAlbum = { ...track, album };
     div.innerHTML = `<img src="${imgUrl}" alt="${track.name}"><div class="track-item-info"><div class="track-item-title">${idx + 1}. ${track.name}</div><div class="track-item-artist">${rememberExplicit(track)}${track.artists?.map(a => a.name).join(', ')}</div></div>`;
+    div.appendChild(trackRowActions(trackWithAlbum));
     div.onclick = () => onPlay(track.uri, album.uri);
     div.oncontextmenu = (e) => { e.preventDefault(); if (window.showTrackContextMenu) window.showTrackContextMenu(e, trackWithAlbum); };
     tracksContainer.appendChild(div);
@@ -661,46 +686,24 @@ function overlayClose(name) {
 // ============================================================
 // เมนู "เพิ่มเติม" ในหน้าเนื้อเพลง (ปุ่มจุดไข่ปลา 3 จุด)
 // ============================================================
-const likeCache = new Map(); // trackId -> true/false กันถามซ้ำ
 let sleepTimer = null, sleepAt = 0, sleepLabelTimer = null;
 
 function closeLyricsMoreMenu() { document.getElementById('lyrics-more-menu')?.classList.add('hidden'); }
-
-async function isTrackLiked(id) {
-  if (likeCache.has(id)) return likeCache.get(id);
-  try { const r = await fetchWebApi(`v1/me/tracks/contains?ids=${id}`); const v = !!r?.[0]; likeCache.set(id, v); return v; }
-  catch (e) { return false; }
-}
-
-async function refreshLikeButton(track) {
-  const btn = document.getElementById('btn-like-track'), label = document.getElementById('menu-like-label');
-  if (!btn || !track) return;
-  const liked = await isTrackLiked(track.id);
-  btn.classList.toggle('liked', liked);
-  btn.title = liked ? 'เลิกถูกใจ' : 'ถูกใจเพลงนี้';
-  document.getElementById('menu-like-track')?.classList.toggle('liked-item', liked);
-  if (label) label.textContent = liked ? 'เลิกถูกใจเพลงนี้' : 'เพิ่มไปยังรายการโปรด';
-}
-
-async function toggleLikeTrack(track) {
-  if (!track) return;
-  const liked = await isTrackLiked(track.id);
-  try {
-    await fetchWebApi(`v1/me/tracks?ids=${track.id}`, liked ? 'DELETE' : 'PUT');
-    likeCache.set(track.id, !liked);
-    showToast(liked ? '💔 เลิกถูกใจแล้ว' : '❤️ เพิ่มไปยังรายการโปรดแล้ว', 'info');
-    refreshLikeButton(track);
-  } catch (e) { console.error('Like error:', e); showToast('❌ ทำรายการไม่สำเร็จ', 'error'); }
-}
 
 function askText(title, defaultValue) {
   return new Promise(resolve => {
     const modal = document.getElementById('text-prompt-modal'), input = document.getElementById('text-prompt-input');
     document.getElementById('text-prompt-title').textContent = title;
     input.value = defaultValue || '';
+    // ป็อปอัพนี้เป็นพี่น้องของ lyrics-modal ใน DOM เช่นกัน ต้องออกจากโหมดเต็มจอก่อน ไม่งั้นจะถูกเนื้อเพลงบังเหมือนที่เคยเป็นกับหน้าต่างเพลย์ลิสต์
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
     modal.classList.remove('hidden');
     requestAnimationFrame(() => { input.focus(); input.select(); });
-    const done = val => { modal.classList.add('hidden'); ok.removeEventListener('click', onOk); cancel.removeEventListener('click', onCancel); input.removeEventListener('keydown', onKey); resolve(val); };
+    const done = val => {
+      modal.classList.add('hidden'); ok.removeEventListener('click', onOk); cancel.removeEventListener('click', onCancel); input.removeEventListener('keydown', onKey);
+      if (OVERLAYS.lyrics.isOpen() && !document.fullscreenElement) document.getElementById('lyrics-modal').requestFullscreen?.().catch(() => { });
+      resolve(val);
+    };
     const ok = document.getElementById('text-prompt-ok'), cancel = document.getElementById('text-prompt-cancel');
     const onOk = () => done(input.value.trim());
     const onCancel = () => done(null);
@@ -768,11 +771,10 @@ function renderMainMenu() {
   const box = document.getElementById('lyrics-more-menu'); if (!box) return;
   box.innerHTML = document.getElementById('lyrics-more-menu-template').innerHTML;
   bindMainMenuEvents();
-  refreshLikeButton(currentTrackData);
+  sleepLabelUpdate(); // ถ้ามีการตั้งเวลาหยุดเล่นค้างอยู่ ให้ป้ายในเมนูขึ้นเวลานับถอยหลังทันทีตอนเปิดเมนูใหม่
 }
 
 function bindMainMenuEvents() {
-  document.getElementById('menu-like-track')?.addEventListener('click', () => { toggleLikeTrack(currentTrackData); closeLyricsMoreMenu(); });
   document.getElementById('menu-add-to-playlist')?.addEventListener('click', () => { closeLyricsMoreMenu(); if (currentTrackData) { currentContextTrack = currentTrackData; document.getElementById('menu-add-playlist').click(); } });
   document.getElementById('menu-new-playlist')?.addEventListener('click', () => { closeLyricsMoreMenu(); createPlaylistWithTrack(currentTrackData); });
   document.getElementById('menu-share-track')?.addEventListener('click', () => { closeLyricsMoreMenu(); shareTrack(currentTrackData); });
@@ -788,7 +790,6 @@ function setupLyricsMoreMenu() {
   bindMainMenuEvents();
   btn.addEventListener('click', e => { e.stopPropagation(); const willOpen = box.classList.contains('hidden'); closeLyricsMoreMenu(); if (willOpen) { renderMainMenu(); box.classList.remove('hidden'); } });
   document.addEventListener('click', e => { if (!e.target.closest('.lyrics-more-wrap')) closeLyricsMoreMenu(); });
-  document.getElementById('btn-like-track')?.addEventListener('click', () => toggleLikeTrack(currentTrackData));
 }
 
 function toggleLyricsModal() { if (OVERLAYS.lyrics.isOpen()) overlayClose('lyrics'); else overlayOpen('lyrics'); }
@@ -835,8 +836,11 @@ function navOnPop(e) {
 }
 
 function showToast(message, type = 'info') {
+  // ข้อความแจ้งเตือนต้องอยู่ในหน้าเนื้อเพลงตอนที่มันเต็มจอจริงของเบราว์เซอร์ ไม่งั้นจะถูกบังจนมองไม่เห็น (เหมือนที่เคยเป็นกับป็อปอัพอื่น)
+  const host = document.fullscreenElement || document.body;
   let container = document.getElementById('toast-container');
-  if (!container) { container = document.createElement('div'); container.id = 'toast-container'; container.className = 'toast-container'; document.body.appendChild(container); }
+  if (!container) { container = document.createElement('div'); container.id = 'toast-container'; container.className = 'toast-container'; host.appendChild(container); }
+  else if (container.parentElement !== host) host.appendChild(container);
   const toast = document.createElement('div'); toast.className = `toast toast-${type}`; toast.textContent = message;
   container.appendChild(toast);
   requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateY(0)'; });
@@ -1791,7 +1795,7 @@ function handlePlayerStateChange(state) {
   const track = state.track_window.current_track;
   const lyricsContainer = document.getElementById('lyrics-container');
   const containerEmpty = !lyricsContainer || lyricsContainer.children.length === 0;
-  if (track && (!currentTrackData || currentTrackData.id !== track.id || containerEmpty)) { currentTrackData = track; setupLyricsComponent(track); refreshLikeButton(track); }
+  if (track && (!currentTrackData || currentTrackData.id !== track.id || containerEmpty)) { currentTrackData = track; setupLyricsComponent(track); }
   updateLyricsComponent(state.position, state.duration, state.paused);
 }
 
