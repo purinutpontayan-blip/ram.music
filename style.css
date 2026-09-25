@@ -490,6 +490,7 @@ h3 {
   align-items: center;
   gap: 1rem;
   width: 30%;
+  min-width: 0;
 }
 
 #player-art {
@@ -502,16 +503,23 @@ h3 {
 .track-details {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .track-title {
   font-weight: 600;
   font-size: 1.1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .track-artist {
   color: var(--text-muted);
   font-size: .9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .player-controls {
@@ -2084,4 +2092,116 @@ am-lyrics {
   .track-item-actions { gap: 0; }
   .row-icon-btn { width: 30px; height: 30px; }
   .row-icon-btn svg { width: 17px; height: 17px; }
+}
+
+/* อนิเมชันโหลดตอนกดเล่นเพลง จนกว่าจะเริ่มเล่นจริง */
+.btn-play.is-loading svg { visibility: hidden; }
+.btn-play.is-loading::after {
+  content: '';
+  position: absolute;
+  width: 40%;
+  height: 40%;
+  border-radius: 50%;
+  border: 2.5px solid rgba(0, 0, 0, .25);
+  border-top-color: rgba(0, 0, 0, .85);
+  animation: btn-play-spin .7s linear infinite;
+}
+.btn-play { position: relative; }
+.btn-play.is-loading::after { top: 50%; left: 50%; transform: translate(-50%, -50%); }
+@keyframes btn-play-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+/* ============================================================
+   Player: แก้ข้อความล้น (ภาพ 4)
+   ============================================================ */
+.track-info {
+  min-width: 0;
+  overflow: hidden;
+}
+.track-details {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ============================================================
+   Daily Chart: หัวเรื่อง + แหล่งข้อมูล (ภาพ 4)
+   ============================================================ */
+.daily-chart-heading {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  margin-bottom: 1rem;
+}
+.daily-chart-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.daily-chart-source {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  color: var(--text-muted);
+  font-size: .8rem;
+}
+.daily-chart-source svg { opacity: .7; flex-shrink: 0; }
+.daily-chart-source a { color: var(--accent); text-decoration: none; }
+.daily-chart-source a:hover { text-decoration: underline; }
+
+/* ============================================================
+   Lyrics loading spinner
+   ============================================================ */
+.lyrics-loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+}
+.lyrics-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, .12);
+  border-top-color: var(--accent);
+  animation: lyrics-spin .8s linear infinite;
+}
+@keyframes lyrics-spin { to { transform: rotate(360deg); } }
+.lyrics-loading-text { font-size: .9rem; opacity: .7; }
+.lyrics-not-found {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+  font-size: .95rem;
+  opacity: .7;
+}
+
+/* ============================================================
+   View loading / error states (ศิลปิน, อัลบั้ม)
+   ============================================================ */
+.view-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+}
+.view-spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, .1);
+  border-top-color: var(--accent);
+  animation: lyrics-spin .8s linear infinite;
+}
+.view-error {
+  padding: 2rem;
+  color: var(--text-muted);
+  font-size: 1rem;
+  text-align: center;
+  line-height: 1.6;
 }
