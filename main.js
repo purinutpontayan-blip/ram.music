@@ -951,13 +951,19 @@ function showToast(message, type = 'info') {
 // LYRICS
 // ============================================================
 let lyricsUpdateInterval;
+// เรียกซ้ำทุกครั้งที่ตำแหน่งเพลงขยับ เพื่อให้ป้ายชื่อผู้แต่งโผล่/หายทันทีตอนเลื่อนผ่านบรรทัดสุดท้าย
+// (ไม่ใช่รอเฉพาะตอนที่ shadow DOM ของวิดเจ็ตมีการเปลี่ยนแปลงเอง ซึ่งอาจไม่เกิดขึ้นอีกหลังบรรทัดสุดท้ายจบไฮไลต์แล้ว)
+function refreshLyricsAuthorsNow(lyricsEl) {
+  if (lyricsEl?.shadowRoot) updateLyricsAuthors(lyricsEl.shadowRoot, currentTrackData);
+}
 function updateLyricsComponent(positionMs, durationMs, paused) {
   clearInterval(lyricsUpdateInterval);
   const lyricsEl = document.querySelector('am-lyrics'); if (!lyricsEl) return;
   if (positionMs !== undefined) { lyricsEl.setAttribute('current-time', positionMs); lyricsEl.setAttribute('duration', paused ? -1 : durationMs); }
+  refreshLyricsAuthorsNow(lyricsEl);
   if (!paused && positionMs !== undefined) {
     let currentPos = positionMs, lastTime = performance.now();
-    lyricsUpdateInterval = setInterval(() => { const now = performance.now(); currentPos += (now - lastTime); lastTime = now; lyricsEl.setAttribute('current-time', currentPos); lyricsEl.currentTime = currentPos; }, 100);
+    lyricsUpdateInterval = setInterval(() => { const now = performance.now(); currentPos += (now - lastTime); lastTime = now; lyricsEl.setAttribute('current-time', currentPos); lyricsEl.currentTime = currentPos; refreshLyricsAuthorsNow(lyricsEl); }, 100);
   }
 }
 // ---------- หาเนื้อเพลงที่ "ซิงก์ตามเวลา" ----------
@@ -1000,13 +1006,24 @@ function relabelSongwriters(root) {
 function updateLyricsAuthors(root, track) {
   const box = document.getElementById('lyrics-authors');
   if (!box) return;
+  const host = root?.host;
   // ดึงจาก property "songwriters" ของตัว <am-lyrics> (root.host) โดยตรง แทนการ querySelector
   // ข้อความที่ render ไว้ใน shadow DOM เพราะตอนเพลงจบจริง (duration ถูกตั้งเป็น -1 เพื่อ reset playback)
   // วิดเจ็ตจะรีเซ็ต currentTime/scroll/activeLine ทำให้ querySelector ไปเจอ DOM คนละช็อตกับตอนที่ยังเล่นอยู่
   // แต่ property "songwriters" เองไม่ได้ถูกแตะต้องตอน reset เลย จึงดึงได้เสถียรกว่าตลอดช่วงเพลง รวมถึงตอนจบ
-  let names = (root?.host?.songwriters || '').trim();
+  let names = (host?.songwriters || '').trim();
   if (!names && track) names = (track.artists || []).map(a => a.name).filter(Boolean).join(', ');
-  if (names) { box.textContent = `ผู้แต่ง: ${names}`; box.classList.remove('hidden'); }
+  // ต้องการให้ป้ายชื่อผู้แต่งโผล่มาเฉพาะตอนเนื้อเพลงเลื่อนถึงบรรทัดสุดท้ายจริง ๆ (หรือเพลง/เนื้อเพลงจบ)
+  // ไม่ใช่ค้างอยู่ใต้เนื้อเพลงตลอดทั้งเพลง — เลยต้องเช็คตำแหน่งปัจจุบันเทียบกับบรรทัดสุดท้ายด้วย
+  const lines = host?.lyrics;
+  const hasLines = Array.isArray(lines) && lines.length > 0;
+  const synced = hasLines && lines.some(l => l.timestamp > 0); // มีเวลากำกับจริง ไม่ใช่เนื้อเพลงดิบไม่ซิงก์
+  const lastLine = hasLines ? lines[lines.length - 1] : null;
+  const pos = typeof host?.currentTime === 'number' ? host.currentTime : -1;
+  // เนื้อเพลงซิงก์: โชว์เมื่อเลื่อน/เล่นถึงบรรทัดสุดท้ายแล้วเท่านั้น
+  // เนื้อเพลงไม่ซิงก์: ไม่มี "บรรทัดสุดท้ายตามเวลา" ให้เทียบ จึงคงพฤติกรรมเดิม (โชว์ทันทีที่มีชื่อผู้แต่ง)
+  const reachedEnd = synced ? (!!lastLine && pos >= lastLine.timestamp) : hasLines;
+  if (names && reachedEnd) { box.textContent = `ผู้แต่ง: ${names}`; box.classList.remove('hidden'); }
   else { box.textContent = ''; box.classList.add('hidden'); }
 }
 
