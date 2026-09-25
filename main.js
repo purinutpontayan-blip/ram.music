@@ -101,7 +101,10 @@ let apiQueue = Promise.resolve();
 async function fetchWebApi(endpoint, method = 'GET', body, _retried) {
   const execute = async () => {
     let wait = rateLimitUntil - Date.now();
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    // ถ้ายังติด Rate limit ให้ throw ทันที ไม่ต้องรอคิวให้ค้าง (Fail fast)
+    if (wait > 0) {
+      const err = new Error('โอ๊ะ! เกิดข้อผิดพลาดบางอย่าง กรุณาลองอีกครั้ง'); err.status = 429; throw err;
+    }
     const token = localStorage.getItem('spotify_access_token');
     const res = await fetch(`https://api.spotify.com/${endpoint}`, { headers: { Authorization: `Bearer ${token}` }, method, body: body ? JSON.stringify(body) : undefined });
     if (res.status === 401) { localStorage.removeItem('spotify_access_token'); window.location.reload(); }
