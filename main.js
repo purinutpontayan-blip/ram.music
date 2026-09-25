@@ -121,7 +121,7 @@ async function fetchWebApi(endpoint, method = 'GET', body, _retried) {
     apiQueue = apiQueue.then(async () => {
       try { resolve(await execute()); } catch (e) { reject(e); }
       await new Promise(r => setTimeout(r, 150));
-    });
+    }).catch(() => {});
   });
 }
 const getUserProfile = () => fetchWebApi('v1/me');
@@ -1079,14 +1079,15 @@ async function setupLyricsComponent(track) {
   const stale = () => !!currentTrackData && currentTrackData.id !== track.id;
   const cleanTitle = track.name;
   const primaryArtist = track.artists[0].name;
-  const album = track.album.name;
+  const album = track.album?.name || '';
+  const queryStr = `${cleanTitle} ${primaryArtist} ${album}`.trim();
   let isrc = '';
   try { const fullTrack = await fetchWebApi(`v1/tracks/${track.id}`); if (fullTrack?.external_ids?.isrc) isrc = fullTrack.external_ids.isrc; } catch (e) { }
   if (stale()) return;
 
   const lyricsEl = mountLyricsEl(container, {
     'song-title': cleanTitle, 'song-artist': primaryArtist, 'song-album': album, 'song-duration': track.duration_ms,
-    query: `${cleanTitle} ${primaryArtist}`, isrc, romanize: "true", providers: "lrc.red,lrclib,netease"
+    query: queryStr, isrc, romanize: "true", providers: "lrc.red,lrclib,netease"
   });
   syncLyricsTime();
 
