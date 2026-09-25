@@ -1000,13 +1000,11 @@ function relabelSongwriters(root) {
 function updateLyricsAuthors(root, track) {
   const box = document.getElementById('lyrics-authors');
   if (!box) return;
-  let names = '';
-  const sw = root?.querySelector('.songwriters-info');
-  if (sw) {
-    const clone = sw.cloneNode(true);
-    clone.querySelector('b')?.remove();
-    names = clone.textContent.replace(/\s+/g, ' ').trim();
-  }
+  // ดึงจาก property "songwriters" ของตัว <am-lyrics> (root.host) โดยตรง แทนการ querySelector
+  // ข้อความที่ render ไว้ใน shadow DOM เพราะตอนเพลงจบจริง (duration ถูกตั้งเป็น -1 เพื่อ reset playback)
+  // วิดเจ็ตจะรีเซ็ต currentTime/scroll/activeLine ทำให้ querySelector ไปเจอ DOM คนละช็อตกับตอนที่ยังเล่นอยู่
+  // แต่ property "songwriters" เองไม่ได้ถูกแตะต้องตอน reset เลย จึงดึงได้เสถียรกว่าตลอดช่วงเพลง รวมถึงตอนจบ
+  let names = (root?.host?.songwriters || '').trim();
   if (!names && track) names = (track.artists || []).map(a => a.name).filter(Boolean).join(', ');
   if (names) { box.textContent = `ผู้แต่ง: ${names}`; box.classList.remove('hidden'); }
   else { box.textContent = ''; box.classList.add('hidden'); }
