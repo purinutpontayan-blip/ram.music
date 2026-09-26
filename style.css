@@ -2198,8 +2198,16 @@ am-lyrics {
 .lyrics-layout.no-lyrics .lyrics-right {
   display: none;
 }
+/* ใช้ justify-content:center ของ flex แม่ตรงๆ แทนการพึ่ง margin:auto บนตัวลูกที่ถูก max-width จำกัดไว้
+   (ลอง margin:0 auto มาก่อนแล้วแต่เพี้ยน ปกเลื่อนไปทางซ้ายเพราะ flex-grow ยังคิดพื้นที่แบบมี 2 คอลัมน์อยู่)
+   วิธีนี้บังคับให้กล่องปก/ชื่อเพลง/คอนโทรลอยู่กึ่งกลางจอเป๊ะๆ ไม่ว่าจอกว้างแค่ไหน */
+.lyrics-layout.no-lyrics {
+  justify-content: center;
+}
 .lyrics-layout.no-lyrics .lyrics-left {
-  margin: 0 auto;
+  flex: none;
+  width: min(100%, 500px);
+  margin: 0;
 }
 
 /* ============================================================
