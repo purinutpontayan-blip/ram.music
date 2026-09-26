@@ -2234,3 +2234,31 @@ am-lyrics {
   text-align: center;
   line-height: 1.6;
 }
+
+/* ============================================================
+   Offline overlay — ไม่มีสัญญาณอินเทอร์เน็ต/มือถือ
+   ============================================================ */
+.offline-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  background: rgba(10, 10, 12, .92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 2rem;
+  text-align: center;
+  transition: opacity .25s ease;
+}
+.offline-overlay.hidden {
+  display: none;
+}
+.offline-overlay-text {
+  color: rgba(255, 255, 255, .85);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
