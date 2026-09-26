@@ -1459,6 +1459,27 @@ am-lyrics {
     height: 48px;
   }
 
+  /* ไม่มีเนื้อเพลง (มือถือ): แทนที่จะเป็นปกเพลงเล็กๆ ข้างชื่อเพลงแบบมีแผงเนื้อเพลง ให้ขยายปกเพลงเป็นรูปใหญ่ตรงกลาง
+     เหมือนหน้าเล่นเพลงปกติของแอปเพลงทั่วไปตอนเพลงนั้นไม่มีเนื้อเพลง */
+  .lyrics-layout.no-lyrics {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto auto auto;
+    grid-template-areas:
+      "art"
+      "details"
+      "seek"
+      "controls";
+  }
+  .lyrics-layout.no-lyrics .lyrics-left img {
+    width: min(100%, 60vh);
+    height: auto;
+    justify-self: center;
+    align-self: center;
+  }
+  .lyrics-layout.no-lyrics .lyrics-track-details {
+    padding-right: 0;
+  }
+
   .lyrics-controls .btn-play,
   .lyrics-controls .btn-play:hover {
     width: 72px;
@@ -2172,14 +2193,13 @@ am-lyrics {
 }
 @keyframes lyrics-spin { to { transform: rotate(360deg); } }
 .lyrics-loading-text { font-size: .9rem; opacity: .7; }
-.lyrics-not-found {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3rem 1rem;
-  color: var(--text-muted);
-  font-size: .95rem;
-  opacity: .7;
+/* ไม่มีเนื้อเพลงสำหรับเพลงนี้ -> ซ่อนแผงเนื้อเพลงทั้งหมด เหลือแค่หน้าเล่นเพลงปกติ (ปกอัลบั้ม/ชื่อเพลง/คอนโทรล)
+   เหมือนเปิดเพลงที่ไม่มีเนื้อเพลงในแอปเพลงทั่วไป แทนที่จะมีกล่องข้อความ "ไม่มีเนื้อเพลง" ค้างอยู่กลางจอ */
+.lyrics-layout.no-lyrics .lyrics-right {
+  display: none;
+}
+.lyrics-layout.no-lyrics .lyrics-left {
+  margin: 0 auto;
 }
 
 /* ============================================================
