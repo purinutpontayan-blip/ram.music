@@ -42,6 +42,39 @@ async function generateCodeChallenge(verifier) {
   const digest = await window.crypto.subtle.digest('SHA-256', data);
   return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)])).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
+// ============================================================
+// รองรับการเปิดเว็บนี้ในเว็บวิวที่ฝังอยู่ในแอป (เช่น เปิดผ่านแอปมือถือของคุณเอง)
+// ============================================================
+// เว็บวิวของแอป Android มาตรฐานจะมี ";wv)" ต่อท้ายชื่อ Android ใน User-Agent เสมอ ส่วน iOS ถ้าไม่ใช่ Safari จริง
+// (ไม่มีคำว่า "Safari" ต่อท้าย) มักเป็นเว็บวิวที่แอปอื่นฝังมา (WKWebView) — ใช้เช็คคร่าวๆ ว่าไม่ได้เปิดในเบราว์เซอร์ปกติ
+function isEmbeddedWebView() {
+  const ua = navigator.userAgent || '';
+  if (/; wv\)/i.test(ua)) return true;
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  if (isIOS && !/Safari/i.test(ua)) return true;
+  return false;
+}
+// เว็บวิวหลายตัว (โดยเฉพาะ WKWebView ของ iOS) ไม่มี EME (Encrypted Media Extensions) เลย ทำให้ Spotify Web
+// Playback SDK ซึ่งต้องใช้ DRM (Widevine) เล่นเสียงเองในหน้านี้ไม่ได้ ต่อให้ล็อกอินผ่านและเป็น Premium ก็ตาม
+// เช็คด้วยการขอสิทธิ์ Widevine จริงๆ ก่อน แทนที่จะเดาจาก User-Agent อย่างเดียว
+async function canUseLocalPlayback() {
+  if (typeof navigator.requestMediaKeySystemAccess !== 'function') return false;
+  try {
+    await navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{
+      initDataTypes: ['cenc'],
+      audioCapabilities: [{ contentType: 'audio/mp4;codecs="mp4a.40.2"' }],
+    }]);
+    return true;
+  } catch (e) { return false; }
+}
+// เมื่อเล่นเสียงในหน้านี้เองไม่ได้ (เช่น อยู่ในเว็บวิวของแอป) ให้สลับไปใช้ Spotify Connect แทน: เปิดตัวเลือก
+// อุปกรณ์เดิมที่มีอยู่แล้ว (ใช้ร่วมกับฟีเจอร์แชร์ไป TV) ให้ผู้ใช้เลือก "เล่นผ่านแอป Spotify บนมือถือ" หรืออุปกรณ์อื่น
+// แทนได้เลย ปุ่มเล่น/หยุด/ข้าม/เนื้อเพลงทั้งหมดยังใช้งานได้ปกติผ่านกลไก remote ที่มีอยู่แล้วในเว็บนี้
+function useRemotePlaybackFallback() {
+  showToast('ℹ️ เบราว์เซอร์นี้เล่นเสียงเองไม่ได้ เลือกอุปกรณ์ (เช่น แอป Spotify บนมือถือ) เพื่อควบคุมจากที่นี่แทน', 'info');
+  overlayOpen('tv'); tvRender(); loadDevices();
+}
+
 async function loginWithSpotify(forceDialog = false) {
   if (!CLIENT_ID || CLIENT_ID === 'YOUR_CLIENT_ID_HERE') { alert('กรุณาใส่ Spotify Client ID ที่ตัวแปร CLIENT_ID ใน main.js'); return; }
   const verifier = generateRandomString(128);
@@ -50,7 +83,16 @@ async function loginWithSpotify(forceDialog = false) {
   const params = new URLSearchParams({ client_id: CLIENT_ID, response_type: 'code', redirect_uri: REDIRECT_URI, code_challenge_method: 'S256', code_challenge: challenge, scope: ['user-read-private', 'user-read-email', 'streaming', 'user-read-playback-state', 'user-modify-playback-state', 'user-library-read', 'user-library-modify', 'user-follow-read', 'user-follow-modify', 'playlist-read-private', 'playlist-read-collaborative', 'playlist-modify-private', 'playlist-modify-public', 'user-top-read', 'user-read-recently-played'].join(' ') });
   // show_dialog=true บังคับให้ Spotify แสดงหน้าขออนุญาตใหม่ (ใช้ตอนสลับบัญชี / ขอสิทธิ์เพิ่ม)
   if (forceDialog) params.set('show_dialog', 'true');
-  window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
+  const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
+  // Spotify ปฏิเสธไม่ให้ล็อกอินถ้าเปิดหน้านี้อยู่ในเว็บวิวที่ฝังอยู่ในแอป (ขึ้น "Opening in an embedded
+  // browser is not supported") — ลอง window.open ก่อน เผื่อแอปตั้งค่าให้ลิงก์แบบนี้เด้งออกไปเบราว์เซอร์นอกแอปได้
+  // (เช่น Chrome Custom Tabs / SFSafariViewController) ถ้าเปิดไม่ได้ (โดนบล็อกป็อปอัพ) ค่อย fallback ไปแบบเดิม
+  if (isEmbeddedWebView()) {
+    const w = window.open(authUrl, '_blank');
+    if (!w) window.location.href = authUrl;
+    return;
+  }
+  window.location.href = authUrl;
 }
 async function handleRedirect() {
   const params = new URLSearchParams(window.location.search);
@@ -619,22 +661,30 @@ function renderAlbumView(album, tracksData, onPlay) {
     tracksContainer.appendChild(div);
   });
 }
+// Spotify ยิง player_state_changed บ่อยกว่าแค่ตอนเปลี่ยนเพลง (เช่น ทุกครั้งที่ seek/อัปเดตตำแหน่ง)
+// เดิมฟังก์ชันนี้เซ็ต src รูป/สร้าง marquee ใหม่ทุกครั้งที่ event ยิง แม้เพลงเดิม ทำให้รูปกับชื่อเพลงกระพริบถี่ๆ
+// เลยจำ track id ล่าสุดไว้ แล้วอัปเดตส่วนที่ผูกกับ "เพลง" (รูปปก/ชื่อเพลง/marquee) เฉพาะตอนเพลงเปลี่ยนจริงเท่านั้น
+let _lastPlayerUiTrackId = null;
 function updatePlayerUI(state) {
   if (!state) return;
   const track = state.track_window.current_track; if (!track) return;
-  document.getElementById('player-art').src = track.album.images[0]?.url;
-  document.getElementById('player-art').classList.remove('hidden');
-  document.getElementById('player-title').textContent = track.name;
+  const trackChanged = track.id !== _lastPlayerUiTrackId;
+  if (trackChanged) {
+    _lastPlayerUiTrackId = track.id;
+    document.getElementById('player-art').src = track.album.images[0]?.url;
+    document.getElementById('player-art').classList.remove('hidden');
+    document.getElementById('player-title').textContent = track.name;
+    const modalArt = document.getElementById('lyrics-modal-art');
+    if (modalArt) { modalArt.crossOrigin = 'anonymous'; modalArt.src = track.album.images[0]?.url; modalArt.onload = () => extractAndApplyColor(modalArt); if (modalArt.complete && modalArt.naturalWidth > 0) extractAndApplyColor(modalArt); }
+    const modalTitle = document.getElementById('lyrics-modal-title');
+    if (modalTitle) {
+      const titleText = track.name;
+      modalTitle.innerHTML = `<span class="marquee-inner">${titleText}&nbsp;&nbsp;&nbsp;${titleText}</span>`;
+      requestAnimationFrame(() => { const inner = modalTitle.querySelector('.marquee-inner'); if (inner && inner.scrollWidth > modalTitle.clientWidth * 2 + 1) { modalTitle.classList.add('is-overflow'); } else { modalTitle.classList.remove('is-overflow'); modalTitle.innerHTML = `<span class="marquee-inner">${titleText}</span>`; } });
+    }
+  }
   window._currentExplicitTrackId = track.id;
   updateExplicitBadges(track);
-  const modalArt = document.getElementById('lyrics-modal-art');
-  if (modalArt) { modalArt.crossOrigin = 'anonymous'; modalArt.src = track.album.images[0]?.url; modalArt.onload = () => extractAndApplyColor(modalArt); if (modalArt.complete && modalArt.naturalWidth > 0) extractAndApplyColor(modalArt); }
-  const modalTitle = document.getElementById('lyrics-modal-title');
-  if (modalTitle) {
-    const titleText = track.name;
-    modalTitle.innerHTML = `<span class="marquee-inner">${titleText}&nbsp;&nbsp;&nbsp;${titleText}</span>`;
-    requestAnimationFrame(() => { const inner = modalTitle.querySelector('.marquee-inner'); if (inner && inner.scrollWidth > modalTitle.clientWidth * 2 + 1) { modalTitle.classList.add('is-overflow'); } else { modalTitle.classList.remove('is-overflow'); modalTitle.innerHTML = `<span class="marquee-inner">${titleText}</span>`; } });
-  }
   const iconPlay = document.getElementById('icon-play'), iconPause = document.getElementById('icon-pause');
   const modalIconPlay = document.getElementById('lyrics-icon-play'), modalIconPause = document.getElementById('lyrics-icon-pause');
   if (state.paused) { iconPlay.classList.remove('hidden'); iconPause.classList.add('hidden'); modalIconPlay?.classList.remove('hidden'); modalIconPause?.classList.add('hidden'); }
@@ -951,19 +1001,13 @@ function showToast(message, type = 'info') {
 // LYRICS
 // ============================================================
 let lyricsUpdateInterval;
-// เรียกซ้ำทุกครั้งที่ตำแหน่งเพลงขยับ เพื่อให้ป้ายชื่อผู้แต่งโผล่/หายทันทีตอนเลื่อนผ่านบรรทัดสุดท้าย
-// (ไม่ใช่รอเฉพาะตอนที่ shadow DOM ของวิดเจ็ตมีการเปลี่ยนแปลงเอง ซึ่งอาจไม่เกิดขึ้นอีกหลังบรรทัดสุดท้ายจบไฮไลต์แล้ว)
-function refreshLyricsAuthorsNow(lyricsEl) {
-  if (lyricsEl?.shadowRoot) updateLyricsAuthors(lyricsEl.shadowRoot, currentTrackData);
-}
 function updateLyricsComponent(positionMs, durationMs, paused) {
   clearInterval(lyricsUpdateInterval);
   const lyricsEl = document.querySelector('am-lyrics'); if (!lyricsEl) return;
   if (positionMs !== undefined) { lyricsEl.setAttribute('current-time', positionMs); lyricsEl.setAttribute('duration', paused ? -1 : durationMs); }
-  refreshLyricsAuthorsNow(lyricsEl);
   if (!paused && positionMs !== undefined) {
     let currentPos = positionMs, lastTime = performance.now();
-    lyricsUpdateInterval = setInterval(() => { const now = performance.now(); currentPos += (now - lastTime); lastTime = now; lyricsEl.setAttribute('current-time', currentPos); lyricsEl.currentTime = currentPos; refreshLyricsAuthorsNow(lyricsEl); }, 100);
+    lyricsUpdateInterval = setInterval(() => { const now = performance.now(); currentPos += (now - lastTime); lastTime = now; lyricsEl.setAttribute('current-time', currentPos); lyricsEl.currentTime = currentPos; }, 100);
   }
 }
 // ---------- หาเนื้อเพลงที่ "ซิงก์ตามเวลา" ----------
@@ -992,6 +1036,10 @@ const LYRICS_SHADOW_CSS = `
 .lyrics-header, .widget-header { display: none !important; }
 .lyrics-footer > div:not(.songwriters-info) { display: none !important; }
 .songwriters-info { display: block !important; }
+/* ชื่อผู้แต่ง (.songwriters-info) เป็นรายการสุดท้ายในเนื้อเพลงที่เลื่อนได้ ให้อยู่เป็นส่วนหนึ่งของเนื้อเพลงจริง ๆ
+   (ไม่ใช่กล่องลอยแยกต่างหาก) แต่เดิมเลื่อนไปสุดพื้นที่ scroll ไม่พอ เลยค้างอยู่ในโซนที่ถูก mask ของ .lyrics-right
+   บังจนอ่านไม่ออก — เพิ่มที่ว่างท้ายสุดให้เลื่อนต่อได้อีก จนบรรทัดนี้ขยับขึ้นไปอยู่ตำแหน่งเดียวกับเนื้อเพลงบรรทัดอื่น ๆ (พ้นโซน mask) */
+.lyrics-container { padding-bottom: 45vh !important; }
 `;
 
 // เปลี่ยนป้าย "Songwriters" ของวิดเจ็ตเป็น "ผู้แต่ง:" (ข้อความภายใน shadow DOM ของวิดเจ็ต แก้ผ่าน CSS ไม่ได้ ต้องแก้ที่ตัวอักษรโดยตรง)
@@ -1003,33 +1051,8 @@ function relabelSongwriters(root) {
 // ข้อมูล "ผู้แต่ง" ของวิดเจ็ต (.songwriters-info) อยู่ท้ายสุดของเนื้อเพลงที่เลื่อนได้ ซึ่งโดน mask ของ .lyrics-right
 // บังไว้ถาวรจนอ่านไม่ออก — ก็อปข้อความออกมาแสดงเป็นแถบนิ่งไว้ใต้เนื้อเพลงแทน (นอกโซนที่ถูก mask)
 // ถ้าผู้ให้บริการเนื้อเพลงไม่มีชื่อผู้แต่งมาให้ (เช่นตอนใช้เนื้อเพลงซิงก์สำรองจาก LRCLIB) จะโชว์ชื่อศิลปินของเพลงแทน
-function updateLyricsAuthors(root, track) {
-  const box = document.getElementById('lyrics-authors');
-  if (!box) return;
-  const host = root?.host;
-  // ดึงจาก property "songwriters" ของตัว <am-lyrics> (root.host) โดยตรง แทนการ querySelector
-  // ข้อความที่ render ไว้ใน shadow DOM เพราะตอนเพลงจบจริง (duration ถูกตั้งเป็น -1 เพื่อ reset playback)
-  // วิดเจ็ตจะรีเซ็ต currentTime/scroll/activeLine ทำให้ querySelector ไปเจอ DOM คนละช็อตกับตอนที่ยังเล่นอยู่
-  // แต่ property "songwriters" เองไม่ได้ถูกแตะต้องตอน reset เลย จึงดึงได้เสถียรกว่าตลอดช่วงเพลง รวมถึงตอนจบ
-  let names = (host?.songwriters || '').trim();
-  if (!names && track) names = (track.artists || []).map(a => a.name).filter(Boolean).join(', ');
-  // ต้องการให้ป้ายชื่อผู้แต่งโผล่มาเฉพาะตอนเนื้อเพลงเลื่อนถึงบรรทัดสุดท้ายจริง ๆ (หรือเพลง/เนื้อเพลงจบ)
-  // ไม่ใช่ค้างอยู่ใต้เนื้อเพลงตลอดทั้งเพลง — เลยต้องเช็คตำแหน่งปัจจุบันเทียบกับบรรทัดสุดท้ายด้วย
-  const lines = host?.lyrics;
-  const hasLines = Array.isArray(lines) && lines.length > 0;
-  const synced = hasLines && lines.some(l => l.timestamp > 0); // มีเวลากำกับจริง ไม่ใช่เนื้อเพลงดิบไม่ซิงก์
-  const lastLine = hasLines ? lines[lines.length - 1] : null;
-  const pos = typeof host?.currentTime === 'number' ? host.currentTime : -1;
-  // เนื้อเพลงซิงก์: โชว์เมื่อเลื่อน/เล่นถึงบรรทัดสุดท้ายแล้วเท่านั้น
-  // เนื้อเพลงไม่ซิงก์: ไม่มี "บรรทัดสุดท้ายตามเวลา" ให้เทียบ จึงคงพฤติกรรมเดิม (โชว์ทันทีที่มีชื่อผู้แต่ง)
-  const reachedEnd = synced ? (!!lastLine && pos >= lastLine.timestamp) : hasLines;
-  if (names && reachedEnd) { box.textContent = `ผู้แต่ง: ${names}`; box.classList.remove('hidden'); }
-  else { box.textContent = ''; box.classList.add('hidden'); }
-}
-
 function mountLyricsEl(container, attrs, track) {
   container.innerHTML = '';
-  document.getElementById('lyrics-authors')?.classList.add('hidden');
   const el = document.createElement('am-lyrics');
   Object.entries(attrs).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') el.setAttribute(k, String(v)); });
   el.setAttribute('autoscroll', 'true'); el.setAttribute('interpolate', 'true'); el.setAttribute('font-family', "'Kanit', sans-serif");
@@ -1039,8 +1062,8 @@ function mountLyricsEl(container, attrs, track) {
     if (el.shadowRoot) {
       clearInterval(waitForShadow);
       const st = document.createElement('style'); st.textContent = LYRICS_SHADOW_CSS; el.shadowRoot.appendChild(st);
-      fixThaiSpans(el.shadowRoot); relabelSongwriters(el.shadowRoot); updateLyricsAuthors(el.shadowRoot, track);
-      new MutationObserver(() => { fixThaiSpans(el.shadowRoot); relabelSongwriters(el.shadowRoot); updateLyricsAuthors(el.shadowRoot, track); }).observe(el.shadowRoot, { childList: true, subtree: true });
+      fixThaiSpans(el.shadowRoot); relabelSongwriters(el.shadowRoot);
+      new MutationObserver(() => { fixThaiSpans(el.shadowRoot); relabelSongwriters(el.shadowRoot); }).observe(el.shadowRoot, { childList: true, subtree: true });
     }
   }, 50);
   return el;
@@ -1144,7 +1167,6 @@ function lrcToTtml(lrc) {
 async function setupLyricsComponent(track) {
   const container = document.getElementById('lyrics-container');
   container.innerHTML = '<div class="lyrics-loading-spinner"><div class="lyrics-spinner"></div><div class="lyrics-loading-text">กำลังค้นหาเนื้อเพลง...</div></div>';
-  document.getElementById('lyrics-authors')?.classList.add('hidden');
   const stale = () => !!currentTrackData && currentTrackData.id !== track.id;
   const cleanTitle = track.name;
   const primaryArtist = track.artists[0].name;
@@ -1166,12 +1188,12 @@ async function setupLyricsComponent(track) {
   // ได้แต่เนื้อเพลงเปล่า ๆ หรือไม่เจอ -> หาเวอร์ชันซิงก์เอง
   const found = await findSyncedLrc(track);
   if (!found || stale() || !container.contains(lyricsEl)) {
-     if (container.contains(lyricsEl)) { container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>'; document.getElementById('lyrics-authors')?.classList.add('hidden'); }
+     if (container.contains(lyricsEl)) { container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>'; }
      return;
   }
   const ttml = lrcToTtml(found.syncedLyrics);
   if (!ttml) {
-     if (container.contains(lyricsEl)) { container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>'; document.getElementById('lyrics-authors')?.classList.add('hidden'); }
+     if (container.contains(lyricsEl)) { container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>'; }
      return;
   }
   mountLyricsEl(container, { 'song-title': cleanTitle, 'song-artist': primaryArtist, 'song-duration': track.duration_ms, ttml, romanize: "true" }, track);
@@ -1576,7 +1598,12 @@ async function init() {
 
     if (isFree) { showPremiumRequiredModal(); return; }
     document.getElementById('player-screen').classList.remove('hidden');
-    initSpotifyPlayer(accessToken, handlePlayerStateChange, () => { console.log('Player is ready!'); });
+    if (await canUseLocalPlayback()) {
+      initSpotifyPlayer(accessToken, handlePlayerStateChange, () => { console.log('Player is ready!'); });
+    } else {
+      // เล่นเสียงในหน้านี้เองไม่ได้ (พบมากในเว็บวิวของแอปมือถือ) — ใช้ Spotify Connect ควบคุมอุปกรณ์อื่นแทน
+      useRemotePlaybackFallback();
+    }
   } catch (e) {
     console.error('Init error:', e);
     showAccessError(e);
