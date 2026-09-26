@@ -315,6 +315,59 @@ const playbackResume = () => remote.id ? remoteCmd('play') : window._spotifyPlay
 const playbackPause = () => remote.id ? remoteCmd('pause') : window._spotifyPlayer?.pause();
 const playbackSeek = ms => remote.id ? remoteCmd('seek', ms) : window._spotifyPlayer?.seek(ms);
 
+// ============================================================
+// ออฟไลน์: ไม่มีสัญญาณอินเทอร์เน็ต/มือถือ -> ขึ้นสปินเนอร์เต็มจอกันสับสนว่าค้าง
+// พอสัญญาณกลับมา ถ้าตอนหลุดสัญญาณกำลังเล่นเพลงอยู่ ก็สั่งเล่นต่อให้อัตโนมัติ
+// ============================================================
+let _wasPlayingBeforeOffline = false;
+function showOfflineOverlay() { document.getElementById('offline-overlay')?.classList.remove('hidden'); }
+function hideOfflineOverlay() { document.getElementById('offline-overlay')?.classList.add('hidden'); }
+window.addEventListener('offline', () => {
+  _wasPlayingBeforeOffline = !seekState.paused; // จำสถานะไว้ก่อนหลุด จะได้รู้ว่าต้องเล่นต่อไหมตอนกลับมา
+  showOfflineOverlay();
+});
+window.addEventListener('online', () => {
+  hideOfflineOverlay();
+  // รอสักครู่ให้เครือข่ายนิ่งจริงๆ ก่อนสั่งเล่นต่อ (สัญญาณกลับมาใหม่ๆ มักยังไม่เสถียรพอจะยิง API ทันที)
+  if (_wasPlayingBeforeOffline) { _wasPlayingBeforeOffline = false; setTimeout(() => playbackResume(), 1200); }
+});
+if (!navigator.onLine) showOfflineOverlay(); // เผื่อเปิดเว็บมาตอนไม่มีสัญญาณอยู่แล้วตั้งแต่แรก
+
+// ============================================================
+// เชื่อมกับแอปเนทีฟสำหรับ Android Auto / CarPlay
+// ============================================================
+// เว็บหน้านี้แสดงผล "จอเล่นเพลง" ได้เฉยๆ แต่ Android Auto (ต้องมี MediaBrowserServiceCompat ของแอป Android)
+// และ CarPlay (ต้องมี MPNowPlayingInfoCenter/MPRemoteCommandCenter + สิทธิ์ CarPlay ของแอป iOS) เป็นการแสดงผล/
+// ควบคุมที่ระบบปฏิบัติการวาดขึ้นเองบนจอรถ ซึ่งต้องเขียนโค้ดฝั่งแอปเนทีฟ (Kotlin/Swift) เชื่อมเข้ามา — ทำจากไฟล์เว็บ
+// อย่างเดียวไม่ได้ สิ่งที่ทำได้จากฝั่งนี้คือเปิด "สะพาน" ให้ฝั่งแอปเนทีฟยิงคำสั่งเข้ามา และรับข้อมูลเพลงที่กำลังเล่นออกไป
+// หมายเหตุ: ไฟล์นี้โหลดแบบ ES module ตัวแปร/ฟังก์ชันระดับบนสุดจะไม่ติด window ให้อัตโนมัติเหมือนสคริปต์ทั่วไป
+// จึงต้อง export ฟังก์ชันควบคุมออกมาที่ window ตรงๆ เพื่อให้ฝั่งแอปเนทีฟยิงเข้ามาได้ (เช่น
+// webView.evaluateJavascript("window.carTogglePlay()") บน Android หรือ webView.evaluateJavaScript(...) บน iOS)
+window.carTogglePlay = () => togglePlay();
+window.carPlay = () => playbackResume();
+window.carPause = () => playbackPause();
+window.carNext = () => nextTrack();
+window.carPrevious = () => previousTrack();
+window.carSeekTo = ms => playbackSeek(Number(ms) || 0);
+// ฝั่งแอปเนทีฟกำหนด window.onCarPlaybackChange = function(info) {...} เอง (ก่อนโหลดเว็บนี้เสร็จก็ได้ ฟังก์ชันนี้
+// จะถูกเรียกซ้ำทุกครั้งที่สถานะเปลี่ยนอยู่แล้ว) แล้วรับข้อมูลเพลงปัจจุบันเป็น plain object ไปอัปเดต
+// MediaBrowserServiceCompat (Android Auto) หรือ MPNowPlayingInfoCenter (CarPlay) ต่อในโค้ดเนทีฟ
+function notifyCarPlaybackChange(state) {
+  if (typeof window.onCarPlaybackChange !== 'function') return;
+  const track = state?.track_window?.current_track; if (!track) return;
+  try {
+    window.onCarPlaybackChange({
+      title: track.name,
+      artist: track.artists.map(a => a.name).join(', '),
+      album: track.album?.name || '',
+      artworkUrl: track.album?.images?.[0]?.url || '',
+      isPlaying: !state.paused,
+      positionMs: state.position,
+      durationMs: state.duration,
+    });
+  } catch (e) { console.error('onCarPlaybackChange error:', e); }
+}
+
 // ---------- เล่นเสียงบนอุปกรณ์อื่น (Spotify Connect) ----------
 // แปลงผลจาก GET /v1/me/player ให้อยู่ในรูปเดียวกับสถานะของ Web Playback SDK เพื่อใช้ UI/เนื้อเพลง/แชร์ TV ชุดเดิม
 function stateFromApi(d) {
@@ -757,6 +810,15 @@ function normalizePalette(picked, count = 5) {
   return out.slice(0, count);
 }
 
+// สร้างชั้นพื้นหลัง blob สีไล่โทนของหน้าเนื้อเพลงไว้ล่วงหน้า (ใช้สีเริ่มต้นจาก CSS fallback var(--blobN, ...))
+// แทนที่จะรอให้ดึงสีจริงจากปกอัลบั้มเสร็จก่อน (โหลดรูป + ประมวลผลสี อาจช้าโดยเฉพาะบนมือถือ) เพราะเดิมชั้นนี้
+// (.modal-blobs) ถูกสร้างจาก applyPalette() เท่านั้น ถ้ายังไม่เคยรันเลยหน้าเนื้อเพลงจะเป็นพื้นมืดเปล่าๆ ค้างอยู่นาน
+function ensureLyricsBlobs() {
+  const modal = document.getElementById('lyrics-modal'); if (!modal || modal.querySelector('.modal-blobs')) return;
+  const blobLayer = document.createElement('div'); blobLayer.className = 'modal-blobs';
+  blobLayer.innerHTML = [1, 2, 3, 4, 5].map(n => `<div class="blob blob-${n}"></div>`).join('');
+  modal.insertBefore(blobLayer, modal.firstChild);
+}
 function applyPalette(palette) {
   tvS.palette = palette.map(c => [c[0], c[1], c[2]]); if (tvS.session) tvSchedulePush(600); // ส่งสีเดียวกันนี้ไปให้หน้าจอ TV
   const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
@@ -769,12 +831,7 @@ function applyPalette(palette) {
   // พื้นหลังหน้าเนื้อเพลง: blob 5 ก้อน ก้อนละสี
   const modal = document.getElementById('lyrics-modal'); if (!modal) return;
   palette.forEach((c, i) => modal.style.setProperty(`--blob${i + 1}`, rgba(c, Math.min(.95, (i < 3 ? .6 : .5) * (mobile ? 1.5 : 1)))));
-  let blobLayer = modal.querySelector('.modal-blobs');
-  if (!blobLayer) {
-    blobLayer = document.createElement('div'); blobLayer.className = 'modal-blobs';
-    blobLayer.innerHTML = [1, 2, 3, 4, 5].map(n => `<div class="blob blob-${n}"></div>`).join('');
-    modal.insertBefore(blobLayer, modal.firstChild);
-  }
+  ensureLyricsBlobs();
 }
 let _lastPaletteSrc = '';
 function extractAndApplyColor(imgEl) {
@@ -805,7 +862,7 @@ const OVERLAYS = {
     isOpen: () => !$el('lyrics-modal').classList.contains('hidden'),
     set: on => {
       const modal = $el('lyrics-modal');
-      if (on) { modal.classList.remove('hidden'); modal.requestFullscreen?.().catch(() => { }); closeLyricsMoreMenu(); return; }
+      if (on) { modal.classList.remove('hidden'); ensureLyricsBlobs(); modal.requestFullscreen?.().catch(() => { }); closeLyricsMoreMenu(); return; }
       closeLyricsMoreMenu();
       if (document.fullscreenElement) document.exitFullscreen().catch(() => { }).finally(() => modal.classList.add('hidden'));
       else modal.classList.add('hidden');
@@ -2002,6 +2059,7 @@ function updateMediaSession(state) {
   on('previoustrack', previousTrack);
   on('nexttrack', nextTrack);
   on('seekto', d => { if (d && typeof d.seekTime === 'number') playbackSeek(Math.round(d.seekTime * 1000)); });
+  on('stop', playbackPause);
 }
 
 let lyricsDebounceTimer = null;
@@ -2012,6 +2070,7 @@ function handlePlayerStateChange(state) {
   syncSeekFromState(state);
   updatePlayerUI(state);
   updateMediaSession(state);
+  notifyCarPlaybackChange(state);
   tvOnPlayerState(state);
   const track = state.track_window.current_track;
   const lyricsContainer = document.getElementById('lyrics-container');
