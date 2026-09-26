@@ -1040,6 +1040,9 @@ const LYRICS_SHADOW_CSS = `
    (ไม่ใช่กล่องลอยแยกต่างหาก) แต่เดิมเลื่อนไปสุดพื้นที่ scroll ไม่พอ เลยค้างอยู่ในโซนที่ถูก mask ของ .lyrics-right
    บังจนอ่านไม่ออก — เพิ่มที่ว่างท้ายสุดให้เลื่อนต่อได้อีก จนบรรทัดนี้ขยับขึ้นไปอยู่ตำแหน่งเดียวกับเนื้อเพลงบรรทัดอื่น ๆ (พ้นโซน mask) */
 .lyrics-container { padding-bottom: 45vh !important; }
+/* ค่าเริ่มต้นของวิดเจ็ตย่อขนาดตัวหนังสือเครดิตท้ายเนื้อเพลงลงครึ่งหนึ่ง (เหมือนแคปชันเล็กๆ) ให้กลับมาใหญ่เท่าเนื้อเพลง
+   บรรทัดอื่นๆ (แต่สียัง/ความจางแบบ inactive เดิม) เพื่อให้ดูเป็นบรรทัดเนื้อเพลงบรรทัดหนึ่งจริงๆ ตามที่ต้องการ */
+.lyrics-footer, .lyrics-footer.lyrics-line { font-size: var(--lyplus-font-size-base) !important; }
 `;
 
 // เปลี่ยนป้าย "Songwriters" ของวิดเจ็ตเป็น "ผู้แต่ง:" (ข้อความภายใน shadow DOM ของวิดเจ็ต แก้ผ่าน CSS ไม่ได้ ต้องแก้ที่ตัวอักษรโดยตรง)
@@ -1167,6 +1170,7 @@ function lrcToTtml(lrc) {
 async function setupLyricsComponent(track) {
   const container = document.getElementById('lyrics-container');
   container.innerHTML = '<div class="lyrics-loading-spinner"><div class="lyrics-spinner"></div><div class="lyrics-loading-text">กำลังค้นหาเนื้อเพลง...</div></div>';
+  setLyricsFoundState(true); // ตั้งต้นแบบมีเนื้อเพลงไว้ก่อนระหว่างค้นหา เผื่อเพลงก่อนหน้าไม่มีเนื้อเพลงค้าง class ไว้
   const stale = () => !!currentTrackData && currentTrackData.id !== track.id;
   const cleanTitle = track.name;
   const primaryArtist = track.artists[0].name;
@@ -1188,16 +1192,22 @@ async function setupLyricsComponent(track) {
   // ได้แต่เนื้อเพลงเปล่า ๆ หรือไม่เจอ -> หาเวอร์ชันซิงก์เอง
   const found = await findSyncedLrc(track);
   if (!found || stale() || !container.contains(lyricsEl)) {
-     if (container.contains(lyricsEl)) { container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>'; }
+     if (container.contains(lyricsEl)) { container.innerHTML = ''; setLyricsFoundState(false); }
      return;
   }
   const ttml = lrcToTtml(found.syncedLyrics);
   if (!ttml) {
-     if (container.contains(lyricsEl)) { container.innerHTML = '<div class="lyrics-not-found">ไม่มีเนื้อเพลงสำหรับเพลงนี้</div>'; }
+     if (container.contains(lyricsEl)) { container.innerHTML = ''; setLyricsFoundState(false); }
      return;
   }
   mountLyricsEl(container, { 'song-title': cleanTitle, 'song-artist': primaryArtist, 'song-duration': track.duration_ms, ttml, romanize: "true" }, track);
   syncLyricsTime();
+}
+
+// ไม่มีเนื้อเพลงสำหรับเพลงนี้ -> ซ่อนแผงเนื้อเพลงทั้งหมด เหลือแค่หน้าเล่นเพลงปกติ (ปกอัลบั้ม/ชื่อเพลง/คอนโทรล)
+// เหมือนตอนเปิดเพลงที่ไม่มีเนื้อเพลงในแอปเพลงทั่วไป แทนที่จะโชว์กล่องข้อความ "ไม่มีเนื้อเพลง" ค้างอยู่
+function setLyricsFoundState(found) {
+  document.querySelector('.lyrics-layout')?.classList.toggle('no-lyrics', !found);
 }
 
 // ตั้งเวลาปัจจุบันให้ <am-lyrics> ที่เพิ่งสร้างใหม่ทันที ไม่ต้องรอ state ถัดไปจาก Spotify
