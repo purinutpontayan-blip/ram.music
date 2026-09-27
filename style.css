@@ -2262,3 +2262,66 @@ am-lyrics {
   font-size: 1.05rem;
   line-height: 1.6;
 }
+
+/* ============================================================
+   คำเตือนก่อนเปิดโหมดรถ
+   ============================================================ */
+.car-mode-confirm-content {
+  max-width: 420px;
+}
+.car-mode-confirm-text {
+  color: var(--text-muted);
+  font-size: .92rem;
+  line-height: 1.7;
+  margin: .75rem 0 1.25rem;
+}
+
+/* ============================================================
+   โหมดรถ — สะท้อนเนื้อเพลงขึ้นกระจกหน้ารถ (วางโทรศัพท์/แท็บเล็ตบนคอนโซล)
+   จอแนวนอน พื้นดำล้วน ไม่มีปก/ชื่อเพลง/คอนโทรล เหลือแค่เนื้อเพลงตรงกลาง และกลับด้านซ้าย-ขวาตั้งใจ
+   ============================================================ */
+.lyrics-modal.car-mode {
+  background: #000 !important;
+}
+.lyrics-modal.car-mode .modal-blobs {
+  display: none; /* ปิดพื้นหลังไล่สี ให้เป็นดำล้วน อ่านง่ายตอนสะท้อนบนกระจก ไม่รบกวนสายตาคนขับ */
+}
+.lyrics-modal.car-mode .lyrics-left {
+  display: none; /* ซ่อนปก/ชื่อเพลง/คอนโทรลทั้งหมด เหลือแค่เนื้อเพลง ตามที่ต้องการ */
+}
+.lyrics-modal.car-mode .lyrics-layout {
+  padding: 0;
+}
+.lyrics-modal.car-mode .lyrics-right {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  -webkit-mask-image: none; /* ไม่ต้อง mask จางบน-ล่างแล้ว เพราะจัดให้อยู่กึ่งกลางจอนิ่งๆ แทนการเลื่อนแบบปกติ */
+  mask-image: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lyrics-modal.car-mode #lyrics-container,
+.lyrics-modal.car-mode am-lyrics {
+  width: 100%;
+  height: 100%;
+  transform: scaleX(-1); /* กลับด้านซ้าย-ขวาโดยตั้งใจ ให้อ่านถูกทิศตอนมองผ่านการสะท้อนบนกระจกหน้ารถ */
+}
+/* แถบปุ่มด้านบน: ตอนอยู่โหมดรถ ซ่อนปุ่มอื่นทั้งหมด เหลือแค่ปุ่ม "ออกจากโหมดรถ" ปุ่มเดียว (ไม่กลับด้าน เพราะไม่ใช่ส่วนของเนื้อเพลงที่สะท้อน) */
+.lyrics-modal.car-mode .lyrics-modal-btns > *:not(#btn-car-mode-exit) {
+  display: none;
+}
+#btn-car-mode-exit {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  width: auto;
+  border-radius: 999px;
+  padding: 0 .9rem;
+}
+.car-mode-exit-label {
+  font-size: .85rem;
+  white-space: nowrap;
+}
