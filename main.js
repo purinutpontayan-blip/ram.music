@@ -1010,7 +1010,13 @@ function bindMainMenuEvents() {
   document.getElementById('menu-new-playlist')?.addEventListener('click', () => { closeLyricsMoreMenu(); createPlaylistWithTrack(currentTrackData); });
   document.getElementById('menu-share-track')?.addEventListener('click', () => { closeLyricsMoreMenu(); shareTrack(currentTrackData); });
   document.getElementById('menu-sleep-timer')?.addEventListener('click', renderSleepOptions);
-  document.getElementById('menu-car-mode')?.addEventListener('click', () => { closeLyricsMoreMenu(); document.getElementById('car-mode-confirm')?.classList.remove('hidden'); });
+  document.getElementById('menu-car-mode')?.addEventListener('click', () => {
+    closeLyricsMoreMenu();
+    // ป็อปอัพนี้เป็นพี่น้องของ lyrics-modal ใน DOM เช่นกัน (เหมือน playlist-modal/text-prompt-modal)
+    // ต้องออกจากโหมดเต็มจอก่อน ไม่งั้นจะถูกเนื้อเพลงที่เต็มจออยู่บังจนมองไม่เห็นเลย
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
+    document.getElementById('car-mode-confirm')?.classList.remove('hidden');
+  });
 }
 
 // ============================================================
@@ -1036,7 +1042,11 @@ async function exitCarMode() {
   try { screen.orientation?.unlock?.(); } catch (e) { }
 }
 function setupCarMode() {
-  document.getElementById('car-mode-cancel')?.addEventListener('click', () => document.getElementById('car-mode-confirm')?.classList.add('hidden'));
+  document.getElementById('car-mode-cancel')?.addEventListener('click', () => {
+    document.getElementById('car-mode-confirm')?.classList.add('hidden');
+    // ยกเลิก: กลับเข้าเต็มจอเนื้อเพลงต่อ ถ้าหน้าเนื้อเพลงยังเปิดอยู่ (เหมือน overlayClose/askText)
+    if (OVERLAYS.lyrics.isOpen() && !document.fullscreenElement) document.getElementById('lyrics-modal').requestFullscreen?.().catch(() => { });
+  });
   document.getElementById('car-mode-confirm-btn')?.addEventListener('click', () => { document.getElementById('car-mode-confirm')?.classList.add('hidden'); enterCarMode(); });
   document.getElementById('btn-car-mode-exit')?.addEventListener('click', exitCarMode);
 }
