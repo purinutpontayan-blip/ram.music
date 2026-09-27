@@ -171,7 +171,13 @@ async function fetchWebApi(endpoint, method = 'GET', body, _retried) {
   };
   return new Promise((resolve, reject) => {
     apiQueue = apiQueue.then(async () => {
-      try { resolve(await execute()); } catch (e) { reject(e); }
+      try { const r = await execute(); handleConnectivityRestored(); resolve(r); }
+      catch (e) {
+        // fetch() ขว้าง TypeError เฉพาะตอนยิงเน็ตเวิร์กไม่ได้จริงๆ (ไม่ใช่แค่ API ตอบ error/สถานะไม่ดี)
+        // เอาไว้ตรวจจับสัญญาณหลุดเอง ไม่ต้องพึ่งแค่ event online/offline ของเบราว์เซอร์ (บางเว็บวิวยิง event พวกนี้ไม่แม่นยำ)
+        if (e instanceof TypeError) handleConnectivityLost();
+        reject(e);
+      }
       await new Promise(r => setTimeout(r, 150));
     }).catch(() => {});
   });
@@ -318,20 +324,37 @@ const playbackSeek = ms => remote.id ? remoteCmd('seek', ms) : window._spotifyPl
 // ============================================================
 // ออฟไลน์: ไม่มีสัญญาณอินเทอร์เน็ต/มือถือ -> ขึ้นสปินเนอร์เต็มจอกันสับสนว่าค้าง
 // พอสัญญาณกลับมา ถ้าตอนหลุดสัญญาณกำลังเล่นเพลงอยู่ ก็สั่งเล่นต่อให้อัตโนมัติ
+// ตรวจจับ 2 ทาง: 1) event online/offline ของเบราว์เซอร์ (เร็ว แต่บางเว็บวิวในแอปยิงไม่แม่นยำ)
+// 2) เจอ error จริงตอนยิง Spotify API (fetchWebApi ด้านบนเรียก handleConnectivityLost ให้เอง) แล้ว
+//    คอยเช็คสัญญาณซ้ำเป็นระยะจนกว่าจะกลับมาใช้ได้จริง — ใช้วิธีนี้เป็นหลักเพราะแม่นยำกว่า
 // ============================================================
 let _wasPlayingBeforeOffline = false;
+let _connectivityLost = false;
+let _connectivityRetryTimer = null;
 function showOfflineOverlay() { document.getElementById('offline-overlay')?.classList.remove('hidden'); }
 function hideOfflineOverlay() { document.getElementById('offline-overlay')?.classList.add('hidden'); }
-window.addEventListener('offline', () => {
+function handleConnectivityLost() {
+  if (_connectivityLost) return;
+  _connectivityLost = true;
   _wasPlayingBeforeOffline = !seekState.paused; // จำสถานะไว้ก่อนหลุด จะได้รู้ว่าต้องเล่นต่อไหมตอนกลับมา
   showOfflineOverlay();
-});
-window.addEventListener('online', () => {
+  clearInterval(_connectivityRetryTimer);
+  _connectivityRetryTimer = setInterval(async () => {
+    try { await fetch('https://api.spotify.com/v1/', { method: 'HEAD', mode: 'no-cors' }); handleConnectivityRestored(); }
+    catch (e) { /* ยังไม่มีสัญญาณ ลองใหม่รอบหน้า */ }
+  }, 3000);
+}
+function handleConnectivityRestored() {
+  clearInterval(_connectivityRetryTimer); _connectivityRetryTimer = null;
+  if (!_connectivityLost) return;
+  _connectivityLost = false;
   hideOfflineOverlay();
   // รอสักครู่ให้เครือข่ายนิ่งจริงๆ ก่อนสั่งเล่นต่อ (สัญญาณกลับมาใหม่ๆ มักยังไม่เสถียรพอจะยิง API ทันที)
   if (_wasPlayingBeforeOffline) { _wasPlayingBeforeOffline = false; setTimeout(() => playbackResume(), 1200); }
-});
-if (!navigator.onLine) showOfflineOverlay(); // เผื่อเปิดเว็บมาตอนไม่มีสัญญาณอยู่แล้วตั้งแต่แรก
+}
+window.addEventListener('offline', handleConnectivityLost);
+window.addEventListener('online', handleConnectivityRestored);
+if (!navigator.onLine) handleConnectivityLost(); // เผื่อเปิดเว็บมาตอนไม่มีสัญญาณอยู่แล้วตั้งแต่แรก
 
 // ============================================================
 // เชื่อมกับแอปเนทีฟสำหรับ Android Auto / CarPlay
@@ -1695,7 +1718,7 @@ function setupEventListeners() {
   document.getElementById('btn-prev').addEventListener('click', previousTrack);
   document.getElementById('btn-lyrics-toggle').addEventListener('click', async () => {
     toggleLyricsModal();
-    if (window._spotifyPlayer || remote.id) { const state = remote.id ? window._lastState : await window._spotifyPlayer.getCurrentState(); if (state) { const lyricsContainer = document.getElementById('lyrics-container'); const containerEmpty = !lyricsContainer || lyricsContainer.children.length === 0; const track = state.track_window?.current_track; if (track && containerEmpty) { currentTrackData = null; setupLyricsComponent(track); } updateLyricsComponent(state.position, state.duration, state.paused); } }
+    if (window._spotifyPlayer || remote.id) { const state = remote.id ? window._lastState : await window._spotifyPlayer.getCurrentState(); if (state) { const track = state.track_window?.current_track; if (track && _lyricsSetupTrackId !== track.id) { _lyricsSetupTrackId = track.id; currentTrackData = track; setupLyricsComponent(track); } updateLyricsComponent(state.position, state.duration, state.paused); } }
   });
   document.getElementById('btn-close-lyrics').addEventListener('click', () => toggleLyricsModal());
   setupTvShare();
@@ -2063,6 +2086,11 @@ function updateMediaSession(state) {
 }
 
 let lyricsDebounceTimer = null;
+// เพลงไหน "ตั้งค่าเนื้อเพลงไปแล้ว" (ไม่ว่าจะเจอเนื้อเพลงจริงหรือสรุปว่าไม่มีเนื้อเพลงก็ตาม)
+// เดิมใช้ "container ว่างไหม" เป็นตัวเช็คแทน แต่พอเพลงไม่มีเนื้อเพลง เราตั้งใจปล่อย container ว่างไว้
+// (setLyricsFoundState(false)) ทำให้ทุกครั้งที่ตำแหน่งเพลงขยับ/เลื่อนเวลา (state เปลี่ยน) เข้าใจผิดว่ายังไม่ได้ตั้งค่า
+// แล้วไปค้นหาเนื้อเพลงซ้ำใหม่ทุกรอบ — เปลี่ยนมาจำ id เพลงที่ตั้งค่าไปแล้วแทน ไม่สนว่า container ว่างหรือไม่
+let _lyricsSetupTrackId = null;
 function handlePlayerStateChange(state) {
   if (!state) return;
   setPlayLoading(false);
@@ -2073,10 +2101,9 @@ function handlePlayerStateChange(state) {
   notifyCarPlaybackChange(state);
   tvOnPlayerState(state);
   const track = state.track_window.current_track;
-  const lyricsContainer = document.getElementById('lyrics-container');
-  const containerEmpty = !lyricsContainer || lyricsContainer.children.length === 0;
-  if (track && (!currentTrackData || currentTrackData.id !== track.id || containerEmpty)) { 
-      currentTrackData = track; 
+  if (track && _lyricsSetupTrackId !== track.id) {
+      currentTrackData = track;
+      _lyricsSetupTrackId = track.id;
       clearTimeout(lyricsDebounceTimer);
       lyricsDebounceTimer = setTimeout(() => {
           if (currentTrackData && currentTrackData.id === track.id) {
