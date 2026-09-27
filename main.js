@@ -887,6 +887,7 @@ const OVERLAYS = {
       const modal = $el('lyrics-modal');
       if (on) { modal.classList.remove('hidden'); ensureLyricsBlobs(); modal.requestFullscreen?.().catch(() => { }); closeLyricsMoreMenu(); return; }
       closeLyricsMoreMenu();
+      if (carModeActive) exitCarMode(); // ปิดหน้าเนื้อเพลงทั้งที ต้องออกจากโหมดรถให้เรียบร้อยด้วย ไม่งั้นจอจะค้างแนวนอน/ล็อกอยู่
       if (document.fullscreenElement) document.exitFullscreen().catch(() => { }).finally(() => modal.classList.add('hidden'));
       else modal.classList.add('hidden');
     }
@@ -1009,6 +1010,35 @@ function bindMainMenuEvents() {
   document.getElementById('menu-new-playlist')?.addEventListener('click', () => { closeLyricsMoreMenu(); createPlaylistWithTrack(currentTrackData); });
   document.getElementById('menu-share-track')?.addEventListener('click', () => { closeLyricsMoreMenu(); shareTrack(currentTrackData); });
   document.getElementById('menu-sleep-timer')?.addEventListener('click', renderSleepOptions);
+  document.getElementById('menu-car-mode')?.addEventListener('click', () => { closeLyricsMoreMenu(); document.getElementById('car-mode-confirm')?.classList.remove('hidden'); });
+}
+
+// ============================================================
+// โหมดรถ — สะท้อนเนื้อเพลงขึ้นกระจกหน้ารถ (วางโทรศัพท์/แท็บเล็ตคว่ำหน้าจอขึ้นบนคอนโซล)
+// จอแนวนอน, พื้นดำ, ไม่มีชื่อเพลง/ปก/คอนโทรล เหลือแค่เนื้อเพลงตรงกลาง และ "กลับด้านซ้าย-ขวา" ตั้งใจ
+// เพื่อให้อ่านถูกทิศทางตอนมองผ่านการสะท้อนบนกระจก
+// ============================================================
+let carModeActive = false;
+async function enterCarMode() {
+  carModeActive = true;
+  const modal = document.getElementById('lyrics-modal');
+  modal.classList.add('car-mode');
+  document.getElementById('btn-car-mode-exit')?.classList.remove('hidden');
+  document.querySelector('am-lyrics')?.classList.add('car-mode'); // ให้ CSS ฝั่งใน shadow DOM ของวิดเจ็ตจัดกึ่งกลาง/ขยายตัวอักษรด้วย
+  try { await modal.requestFullscreen?.(); } catch (e) { }
+  try { await screen.orientation?.lock?.('landscape'); } catch (e) { } // ใช้ได้เฉพาะมือถือ/แท็บเล็ตบางรุ่น เดสก์ท็อป/บางเบราว์เซอร์จะ throw เฉยๆ ไม่เป็นไร
+}
+async function exitCarMode() {
+  carModeActive = false;
+  document.getElementById('lyrics-modal')?.classList.remove('car-mode');
+  document.getElementById('btn-car-mode-exit')?.classList.add('hidden');
+  document.querySelector('am-lyrics')?.classList.remove('car-mode');
+  try { screen.orientation?.unlock?.(); } catch (e) { }
+}
+function setupCarMode() {
+  document.getElementById('car-mode-cancel')?.addEventListener('click', () => document.getElementById('car-mode-confirm')?.classList.add('hidden'));
+  document.getElementById('car-mode-confirm-btn')?.addEventListener('click', () => { document.getElementById('car-mode-confirm')?.classList.add('hidden'); enterCarMode(); });
+  document.getElementById('btn-car-mode-exit')?.addEventListener('click', exitCarMode);
 }
 
 function setupLyricsMoreMenu() {
@@ -1123,6 +1153,11 @@ const LYRICS_SHADOW_CSS = `
 /* ค่าเริ่มต้นของวิดเจ็ตย่อขนาดตัวหนังสือเครดิตท้ายเนื้อเพลงลงครึ่งหนึ่ง (เหมือนแคปชันเล็กๆ) ให้กลับมาใหญ่เท่าเนื้อเพลง
    บรรทัดอื่นๆ (แต่สียัง/ความจางแบบ inactive เดิม) เพื่อให้ดูเป็นบรรทัดเนื้อเพลงบรรทัดหนึ่งจริงๆ ตามที่ต้องการ */
 .lyrics-footer, .lyrics-footer.lyrics-line { font-size: var(--lyplus-font-size-base) !important; }
+/* โหมดรถ: จัดเนื้อเพลงให้อยู่กึ่งกลางจอ ตัวใหญ่ขึ้น อ่านง่ายจากระยะไกล/ตอนสะท้อนบนกระจก
+   toggle คลาส "car-mode" ที่ตัว <am-lyrics> (host) จากฝั่งนอก แล้วใช้ :host() เลือก element ข้างในของ shadow DOM ได้ */
+:host(.car-mode) .lyrics-container { --lyrics-scroll-padding-top: 45% !important; }
+:host(.car-mode) .lyrics-line { text-align: center !important; justify-content: center !important; }
+:host(.car-mode) .lyrics-line.active { font-size: calc(var(--lyplus-font-size-base) * 1.35) !important; }
 `;
 
 // เปลี่ยนป้าย "Songwriters" ของวิดเจ็ตเป็น "ผู้แต่ง:" (ข้อความภายใน shadow DOM ของวิดเจ็ต แก้ผ่าน CSS ไม่ได้ ต้องแก้ที่ตัวอักษรโดยตรง)
@@ -1137,6 +1172,7 @@ function relabelSongwriters(root) {
 function mountLyricsEl(container, attrs, track) {
   container.innerHTML = '';
   const el = document.createElement('am-lyrics');
+  if (carModeActive) el.classList.add('car-mode'); // รักษาสถานะโหมดรถไว้ข้ามการ mount ใหม่ทุกครั้งที่เปลี่ยนเพลง
   Object.entries(attrs).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') el.setAttribute(k, String(v)); });
   el.setAttribute('autoscroll', 'true'); el.setAttribute('interpolate', 'true'); el.setAttribute('font-family', "'Kanit', sans-serif");
   container.appendChild(el);
@@ -1723,6 +1759,7 @@ function setupEventListeners() {
   document.getElementById('btn-close-lyrics').addEventListener('click', () => toggleLyricsModal());
   setupTvShare();
   setupLyricsMoreMenu();
+  setupCarMode();
   document.getElementById('btn-lyrics-play-pause')?.addEventListener('click', togglePlay);
   document.getElementById('btn-lyrics-next')?.addEventListener('click', nextTrack);
   document.getElementById('btn-lyrics-prev')?.addEventListener('click', previousTrack);
